@@ -1,0 +1,10 @@
+# Backend - segunda capa de protección
+.env
+.env.*
+!.env.example
+node_modules/
+logs/
+*.log
+.pm2/
+*.pid
+coverage/

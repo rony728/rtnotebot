@@ -1,0 +1,60 @@
+# ============================================
+#  RTNote - .gitignore raíz (repositorio PÚBLICO)
+# ============================================
+
+# --- Secretos / variables de entorno ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+credentials*.json
+# Credenciales de Cloudflare Tunnel
+.cloudflared/
+cloudflared*.json
+cert.pem
+
+# --- Dependencias ---
+node_modules/
+jspm_packages/
+
+# --- Logs ---
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- PM2 ---
+.pm2/
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# --- Builds / caché ---
+dist/
+build/
+coverage/
+.cache/
+.npm/
+.eslintcache
+
+# --- Dumps de base de datos ---
+*.dump
+*.sql.gz
+*.backup
+backups/
+
+# --- SO / Editores ---
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5" />
+      <stop offset="50%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#06b6d4" />
+    </linearGradient>
+    <linearGradient id="bellGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#e0e7ff" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#000000" flood-opacity="0.35" />
+    </filter>
+  </defs>
+  
+  <!-- Rounded App Icon Background -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+  
+  <!-- Subtle Inner Ring -->
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="4" />
+  
+  <!-- Bell Group with Shadow -->
+  <g filter="url(#glow)">
+    <!-- Bell Top Ring / Clapper Loop -->
+    <path d="M256 108 c-14 0 -24 10 -24 24 l0 8 c-56 12 -96 58 -96 116 l0 76 l-24 24 c-6 6 -8 14 -4 22 c4 8 12 12 20 12 l256 0 c8 0 16 -4 20 -12 c4 -8 2 -16 -4 -22 l-24 -24 l0 -76 c0 -58 -40 -104 -96 -116 l0 -8 c0 -14 -10 -24 -24 -24 z" fill="url(#bellGrad)" />
+    
+    <!-- Bell Clapper Ball -->
+    <circle cx="256" cy="404" r="28" fill="#ffffff" />
+    
+    <!-- Accent Notification Badge (Telegram Paper Plane / Pulse indicator) -->
+    <circle cx="360" cy="156" r="42" fill="#10b981" stroke="#ffffff" stroke-width="8" />
+    <path d="M346 156 l10 10 l20 -20" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+    
+    <!-- Checkmark / Note accent line on bell -->
+    <path d="M216 260 L242 286 L298 228" fill="none" stroke="#4f46e5" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+</svg>
