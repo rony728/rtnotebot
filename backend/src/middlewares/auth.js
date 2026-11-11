@@ -57,37 +57,71 @@ const signToken = (user) =>
  * Acepta sesión HttpOnly y mantiene Bearer temporalmente por compatibilidad.
  * Si es correcto, expone req.user = { id, username }.
  */
-const requireAuth = (req, _res, next) => {
+const requireAuth = async (req, _res, next) => {
   const cookieToken = getCookieToken(req.headers.cookie);
   const header = req.headers.authorization || '';
   const [scheme, bearerToken] = header.split(' ');
   const token = cookieToken || (scheme === 'Bearer' ? bearerToken : null);
 
-  if (!token) {
-    return next(new HttpError(401, 'Token de autenticación requerido'));
-  }
+  if (!token) return next(new HttpError(401, 'Token de autenticación requerido'));
 
+  let payload;
   try {
-    const payload = jwt.verify(token, env.jwt.secret, {
-      algorithms: ['HS256'], // evita ataques de "alg: none" / confusión de algoritmo
+    payload = jwt.verify(token, env.jwt.secret, {
+      algorithms: ['HS256'],
       issuer: env.jwt.issuer,
     });
-
-    const id = Number.parseInt(payload.sub, 10);
-    if (!Number.isInteger(id)) throw new Error('sub inválido');
-
-    req.user = { id, username: payload.username };
-    return next();
   } catch (err) {
     const message = err.name === 'TokenExpiredError' ? 'Token expirado' : 'Token inválido';
     return next(new HttpError(401, message));
   }
+
+  const id = Number.parseInt(payload.sub, 10);
+  if (!Number.isInteger(id)) return next(new HttpError(401, 'Token inválido'));
+
+  try {
+    // La sesión se contrasta con PostgreSQL en cada petición para aplicar
+    // inmediatamente desactivaciones, rechazos y cambios de rol.
+    const { rows } = await db.query(
+      `SELECT id, username, role, approval_status, is_active
+         FROM users
+        WHERE id = $1
+        LIMIT 1`,
+      [id]
+    );
+    const account = rows[0];
+    if (!account || !account.is_active || account.approval_status !== 'approved') {
+      return next(new HttpError(401, 'Cuenta no disponible. Contacta al administrador.'));
+    }
+
+    req.user = {
+      id: account.id,
+      username: account.username,
+      role: account.role,
+      approval_status: account.approval_status,
+    };
+    return next();
+  } catch (err) {
+    return next(err);
+  }
+};
+
+const optionalAuth = (req, res, next) => {
+  const hasCookie = Boolean(getCookieToken(req.headers.cookie));
+  const hasBearer = /^Bearer\s+/.test(req.headers.authorization || '');
+  if (!hasCookie && !hasBearer) return next();
+  return requireAuth(req, res, next);
+};
+
+const requireAdmin = (req, _res, next) => {
+  if (!req.user) return next(new HttpError(401, 'Autenticación requerida'));
+  if (req.user.role !== 'admin') return next(new HttpError(403, 'Se requieren permisos de administrador'));
+  return next();
 };
 
 /**
  * Middleware para registro:
- * Si la tabla users tiene 0 usuarios, permite bootstrap inicial sin token.
- * Si ya existe al menos 1 usuario, exige obligatoriamente un JWT válido de sesión activa (401 si no está autenticado).
+ * Permite continuar sin sesión cuando no hay cookie/token y validar opcionalmente una sesión existente.
  */
 const allowBootstrapOrAuth = async (req, res, next) => {
   try {
@@ -108,5 +142,7 @@ module.exports = {
   setAuthCookie,
   clearAuthCookie,
   requireAuth,
+  optionalAuth,
+  requireAdmin,
   allowBootstrapOrAuth,
 };

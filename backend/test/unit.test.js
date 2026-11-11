@@ -20,7 +20,7 @@ const {
   escapeHtml,
 } = require('../src/services/telegramService');
 const { backoffSeconds } = require('../src/services/scheduler');
-const { signToken, getCookieToken, requireAuth, allowBootstrapOrAuth } = require('../src/middlewares/auth');
+const { signToken, getCookieToken, requireAuth, requireAdmin, allowBootstrapOrAuth } = require('../src/middlewares/auth');
 const { csrfProtection } = require('../src/middlewares/csrf');
 const db = require('../src/config/db');
 const { readBoolean } = require('../src/utils/validation');
@@ -141,19 +141,48 @@ test('requireAuth: rechaza con 401 si falta token o esquema no es Bearer', () =>
   assert.equal(calledErr?.status, 401);
 });
 
-test('requireAuth: valida token firmado por signToken correctamente', () => {
-  const token = signToken({ id: 42, username: 'tester' });
-  const req = { headers: { authorization: `Bearer ${token}` } };
-  let nextCalled = false;
-  requireAuth(req, {}, (err) => {
-    assert.ifError(err);
-    nextCalled = true;
-  });
-  assert.equal(nextCalled, true);
-  assert.deepEqual(req.user, { id: 42, username: 'tester' });
+test('requireAuth: valida JWT y recupera rol/estado actual desde PostgreSQL', async () => {
+  const originalQuery = db.query;
+  db.query = async (_sql, params) => ({ rows: [{ id: params[0], username: 'tester', role: 'admin', approval_status: 'approved', is_active: true }] });
+  try {
+    const token = signToken({ id: 42, username: 'tester' });
+    const req = { headers: { authorization: `Bearer ${token}` } };
+    let nextCalled = false;
+    await requireAuth(req, {}, (err) => { assert.ifError(err); nextCalled = true; });
+    assert.equal(nextCalled, true);
+    assert.deepEqual(req.user, { id: 42, username: 'tester', role: 'admin', approval_status: 'approved' });
+  } finally { db.query = originalQuery; }
 });
 
 
+
+
+test('requireAuth: bloquea cuentas pendientes o desactivadas aunque el JWT siga vigente', async () => {
+  const originalQuery = db.query;
+  for (const account of [
+    { id: 51, username: 'pending', role: 'user', approval_status: 'pending', is_active: true },
+    { id: 52, username: 'disabled', role: 'user', approval_status: 'approved', is_active: false },
+  ]) {
+    db.query = async () => ({ rows: [account] });
+    const token = signToken({ id: account.id, username: account.username });
+    const req = { headers: { authorization: `Bearer ${token}` } };
+    let calledError;
+    await requireAuth(req, {}, (err) => { calledError = err; });
+    assert.equal(calledError?.status, 401);
+    assert.match(calledError?.message || '', /Cuenta no disponible/);
+  }
+  db.query = originalQuery;
+});
+
+test('requireAdmin: permite administradores y rechaza usuarios estándar', () => {
+  let error;
+  requireAdmin({ user: { id: 1, role: 'admin' } }, {}, (err) => { error = err; });
+  assert.equal(error, undefined);
+  requireAdmin({ user: { id: 2, role: 'user' } }, {}, (err) => { error = err; });
+  assert.equal(error?.status, 403);
+  requireAdmin({}, {}, (err) => { error = err; });
+  assert.equal(error?.status, 401);
+});
 
 test('getCookieToken: extrae la cookie de sesión sin confundir otras cookies', () => {
   const token = signToken({ id: 42, username: 'tester' });
@@ -162,16 +191,17 @@ test('getCookieToken: extrae la cookie de sesión sin confundir otras cookies', 
   assert.equal(getCookieToken('rtnote_session=%E0%A4%A'), null);
 });
 
-test('requireAuth: valida JWT desde cookie HttpOnly', () => {
-  const token = signToken({ id: 43, username: 'cookie_user' });
-  const req = { headers: { cookie: `rtnote_session=${encodeURIComponent(token)}` } };
-  let nextCalled = false;
-  requireAuth(req, {}, (err) => {
-    assert.ifError(err);
-    nextCalled = true;
-  });
-  assert.equal(nextCalled, true);
-  assert.deepEqual(req.user, { id: 43, username: 'cookie_user' });
+test('requireAuth: valida JWT desde cookie HttpOnly', async () => {
+  const originalQuery = db.query;
+  db.query = async (_sql, params) => ({ rows: [{ id: params[0], username: 'cookie_user', role: 'user', approval_status: 'approved', is_active: true }] });
+  try {
+    const token = signToken({ id: 43, username: 'cookie_user' });
+    const req = { headers: { cookie: `rtnote_session=${encodeURIComponent(token)}` } };
+    let nextCalled = false;
+    await requireAuth(req, {}, (err) => { assert.ifError(err); nextCalled = true; });
+    assert.equal(nextCalled, true);
+    assert.deepEqual(req.user, { id: 43, username: 'cookie_user', role: 'user', approval_status: 'approved' });
+  } finally { db.query = originalQuery; }
 });
 
 test('csrfProtection: permite métodos seguros y clientes sin Origin', () => {
@@ -239,9 +269,10 @@ test('allowBootstrapOrAuth: exige JWT y rechaza 401 si ya existe al menos 1 usua
 
 test('allowBootstrapOrAuth: permite registro autenticado si ya existen usuarios', async () => {
   const origQuery = db.query;
-  db.query = async (sql) => {
-    if (sql.includes('FROM users')) return { rows: [{ '1': 1 }] };
-    return origQuery(sql);
+  db.query = async (sql, params = []) => {
+    if (sql.includes('SELECT 1 FROM users')) return { rows: [{ '1': 1 }] };
+    if (sql.includes('SELECT id, username, role, approval_status, is_active')) return { rows: [{ id: params[0], username: 'admin', role: 'admin', approval_status: 'approved', is_active: true }] };
+    return origQuery(sql, params);
   };
 
   try {
@@ -253,7 +284,7 @@ test('allowBootstrapOrAuth: permite registro autenticado si ya existen usuarios'
       nextCalled = true;
     });
     assert.equal(nextCalled, true);
-    assert.deepEqual(req.user, { id: 1, username: 'admin' });
+    assert.deepEqual(req.user, { id: 1, username: 'admin', role: 'admin', approval_status: 'approved' });
   } finally {
     db.query = origQuery;
   }
@@ -288,7 +319,7 @@ test('register: crear un usuario desde sesión autenticada no reemplaza la cooki
       if (sql.includes('pg_advisory_xact_lock')) return { rows: [] };
       if (sql.includes('SELECT 1 FROM users')) return { rows: [{ '1': 1 }] };
       if (sql.includes('INSERT INTO users')) {
-        return { rows: [{ id: 99, username: params[0], telegram_chat_id: null, created_at: new Date() }] };
+        return { rows: [{ id: 99, username: params[0], telegram_chat_id: null, role: params[3], approval_status: 'approved', is_active: true, created_at: new Date() }] };
       }
       throw new Error(`Consulta inesperada en prueba: ${sql}`);
     },
@@ -296,7 +327,7 @@ test('register: crear un usuario desde sesión autenticada no reemplaza la cooki
   });
 
   const req = {
-    user: { id: 7, username: 'admin' },
+    user: { id: 7, username: 'admin', role: 'admin' },
     body: { username: 'nuevo_usuario', password: 'password-seguro-123' },
   };
   const res = {
@@ -352,6 +383,9 @@ test('register: serializa el bootstrap y solo permite crear el primer usuario an
             id: nextId++,
             username: params[0],
             telegram_chat_id: params[2],
+            role: params[3],
+            approval_status: 'approved',
+            is_active: true,
             created_at: new Date(),
           };
           users.push(row);

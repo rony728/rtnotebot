@@ -16,15 +16,26 @@ CREATE TABLE IF NOT EXISTS users (
     -- BIGINT: los chat_id de Telegram pueden superar el rango de INTEGER
     -- y ser negativos (grupos/canales).
     telegram_chat_id  BIGINT       NULL,
+    role              VARCHAR(16)  NOT NULL DEFAULT 'user',
+    approval_status   VARCHAR(16)  NOT NULL DEFAULT 'pending',
+    is_active         BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     CONSTRAINT users_username_format_chk
-        CHECK (username ~ '^[A-Za-z0-9_.-]{3,32}$')
+        CHECK (username ~ '^[A-Za-z0-9_.-]{3,32}$'),
+    CONSTRAINT users_role_chk CHECK (role IN ('admin', 'user')),
+    CONSTRAINT users_approval_status_chk
+        CHECK (approval_status IN ('pending', 'approved', 'rejected'))
 );
 
 -- Username único sin distinguir mayúsculas/minúsculas
 CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_uidx
     ON users (LOWER(username));
+
+CREATE INDEX IF NOT EXISTS users_approval_status_created_idx
+    ON users (approval_status, created_at DESC);
+CREATE INDEX IF NOT EXISTS users_role_active_idx
+    ON users (role, is_active);
 
 -- ------------------------------------------------------------
 --  Tabla: reminders

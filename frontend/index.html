@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#0f172a">
+  <meta name="theme-color" content="#f3f6fb">
   <meta name="description" content="Sistema de recordatorios multiplataforma con notificaciones automáticas a Telegram (@rtnotebot)">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -103,6 +103,27 @@
         <button type="submit" class="btn btn-primary btn-block">
           Ingresar a RT Note
         </button>
+      </form>
+
+      <div class="auth-register-prompt" style="margin-top: 1.25rem; text-align: center;">
+        <p class="settings-desc">¿No tienes cuenta?</p>
+        <button id="btn-show-register" type="button" class="btn btn-ghost btn-block">Crear una cuenta</button>
+      </div>
+
+      <form id="form-public-register" class="hidden" novalidate style="margin-top: 1.5rem;">
+        <hr class="settings-divider">
+        <h3 class="card-title" style="margin-bottom: 1rem;">Crear cuenta</h3>
+        <p class="settings-desc">Tu solicitud será revisada por un administrador. Podrás ingresar cuando sea aprobada.</p>
+        <div class="form-group">
+          <label class="form-label" for="register-username">Nombre de usuario *</label>
+          <input type="text" id="register-username" name="username" class="form-control" minlength="3" maxlength="32" autocomplete="username" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="register-password">Contraseña *</label>
+          <input type="password" id="register-password" name="password" class="form-control" minlength="8" maxlength="72" autocomplete="new-password" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Enviar solicitud</button>
+        <button id="btn-cancel-register" type="button" class="btn btn-ghost btn-block" style="margin-top: .5rem;">Volver a iniciar sesión</button>
       </form>
     </section>
 
@@ -448,6 +469,22 @@
         </form>
       </section>
 
+      <hr class="settings-divider">
+
+      <section id="admin-requests-section" class="settings-section hidden">
+        <div class="settings-section-header">
+          <h4 class="settings-section-title">Solicitudes de registro</h4>
+          <button id="btn-refresh-admin-requests" type="button" class="btn btn-ghost btn-sm">Actualizar</button>
+        </div>
+        <div id="admin-requests-list" class="settings-desc">Cargando solicitudes...</div>
+      </section>
+
+      <hr class="settings-divider">
+      <section id="admin-users-section" class="settings-section hidden">
+        <div class="settings-section-header"><h4 class="settings-section-title">Gestión de usuarios</h4><button id="btn-refresh-admin-users" type="button" class="btn btn-ghost btn-sm">Actualizar</button></div>
+        <input id="admin-users-search" class="form-control" type="search" placeholder="Buscar usuario..." aria-label="Buscar usuario">
+        <div id="admin-users-list" class="settings-desc" style="margin-top:.75rem">Cargando usuarios...</div>
+      </section>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal-settings').classList.add('hidden')">
           Cerrar
@@ -456,13 +493,38 @@
     </div>
   </div>
 
+  <!-- Modal: Restablecer contraseña de usuario -->
+  <div id="modal-reset-password" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="reset-password-title">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="reset-password-title" class="modal-title">Restablecer contraseña</h3>
+        <button id="btn-close-reset-password" type="button" class="modal-close" aria-label="Cerrar">&times;</button>
+      </div>
+      <p class="settings-desc">Define una nueva contraseña para <strong id="reset-password-username"></strong>.</p>
+      <form id="form-reset-password" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="reset-password-input">Nueva contraseña</label>
+          <input id="reset-password-input" class="form-control" type="password" minlength="8" maxlength="72" autocomplete="new-password" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="reset-password-confirm">Confirmar contraseña</label>
+          <input id="reset-password-confirm" class="form-control" type="password" minlength="8" maxlength="72" autocomplete="new-password" required>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-cancel-reset-password" type="button" class="btn btn-secondary">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar contraseña</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Contenedor Global de Toasts -->
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
   <!-- Scripts Modularizados (Orden crítico: api -> auth -> app) -->
-  <script src="./js/api.js?v=1.2.1"></script>
-  <script src="./js/auth.js?v=1.2.1"></script>
-  <script src="./js/app.js?v=1.2.1"></script>
+  <script src="./js/api.js?v=1.2.3"></script>
+  <script src="./js/auth.js?v=1.2.3"></script>
+  <script src="./js/app.js?v=1.2.3"></script>
 
 </body>
 </html>

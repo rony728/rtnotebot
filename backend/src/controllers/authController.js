@@ -15,7 +15,7 @@ const CHAT_ID_RE = /^-?\d{1,15}$/;
 // (mitiga enumeración de usuarios por timing).
 const DUMMY_HASH = bcrypt.hashSync('rtnote-dummy-password', BCRYPT_ROUNDS);
 
-const USER_PUBLIC_COLUMNS = 'id, username, telegram_chat_id, created_at';
+const USER_PUBLIC_COLUMNS = 'id, username, telegram_chat_id, role, approval_status, is_active, created_at';
 
 /* ------------------------------------------------------------------ */
 /*  Validaciones                                                       */
@@ -59,6 +59,9 @@ const toPublicUser = (row) => ({
   // pg devuelve BIGINT como string: se mantiene así para no perder precisión
   telegram_chat_id: row.telegram_chat_id,
   telegram_linked: row.telegram_chat_id !== null,
+  role: row.role || 'user',
+  approval_status: row.approval_status || 'approved',
+  is_active: row.is_active !== false,
   created_at: row.created_at,
 });
 
@@ -75,6 +78,9 @@ const register = asyncHandler(async (req, res) => {
   if (errors.length) throw new HttpError(400, 'Datos inválidos', errors);
 
   const chatId = parseChatId(req.body.telegram_chat_id) ?? null;
+  if (req.user && req.user.role !== 'admin') {
+    throw new HttpError(403, 'Solo un administrador puede crear cuentas directamente');
+  }
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
   const client = await db.getClient();
 
@@ -89,19 +95,30 @@ const register = asyncHandler(async (req, res) => {
       throw new HttpError(401, 'Token de autenticación requerido');
     }
 
+    // La primera cuenta del sistema se convierte en administradora y queda
+    // aprobada para permitir el bootstrap en instalaciones nuevas.
+    const isBootstrap = countRows.length === 0;
+    const isAdminCreation = req.user?.role === 'admin';
+    const role = isBootstrap ? 'admin' : 'user';
+    const approvalStatus = (isBootstrap || isAdminCreation) ? 'approved' : 'pending';
     const { rows } = await client.query(
-      `INSERT INTO users (username, password_hash, telegram_chat_id)
-       VALUES ($1, $2, $3)
+      `INSERT INTO users (username, password_hash, telegram_chat_id, role, approval_status, is_active)
+       VALUES ($1, $2, $3, $4, $5, TRUE)
        RETURNING ${USER_PUBLIC_COLUMNS}`,
-      [username, passwordHash, chatId]
+      [username, passwordHash, chatId, role, approvalStatus]
     );
     await client.query('COMMIT');
 
     const user = toPublicUser(rows[0]);
-    // Solo el registro inicial anónimo inicia una sesión nueva. Al crear usuarios
-    // desde una sesión existente no se debe reemplazar la cookie del administrador.
-    if (!req.user) setAuthCookie(res, signToken(user));
-    return res.status(201).json({ user });
+    // Solo el bootstrap inicial inicia sesión automáticamente.
+    if (isBootstrap) setAuthCookie(res, signToken(user));
+    if (approvalStatus === 'pending') {
+      return res.status(202).json({
+        message: 'Solicitud recibida. Tu cuenta está pendiente de aprobación por un administrador.',
+        status: 'pending',
+      });
+    }
+    return res.status(201).json({ user, message: isAdminCreation ? 'Usuario creado y aprobado' : 'Cuenta inicial creada' });
   } catch (err) {
     try {
       await client.query('ROLLBACK');
@@ -142,6 +159,9 @@ const login = asyncHandler(async (req, res) => {
   if (!row || !valid) {
     // Mensaje genérico: no revela si el usuario existe
     throw new HttpError(401, 'Credenciales inválidas');
+  }
+  if (!row.is_active || row.approval_status !== 'approved') {
+    throw new HttpError(403, 'Tu cuenta todavía no está habilitada. Contacta al administrador.');
   }
 
   const user = toPublicUser(row);
@@ -294,6 +314,93 @@ const telegramStatus = asyncHandler(async (req, res) => {
   return res.json(status);
 });
 
+const listUsers = asyncHandler(async (req, res) => {
+  const status = typeof req.query.status === 'string' ? req.query.status : null;
+  const allowed = ['pending', 'approved', 'rejected'];
+  if (status && !allowed.includes(status)) throw new HttpError(400, 'Filtro de estado inválido');
+  const { rows } = await db.query(
+    `SELECT id, username, role, approval_status, is_active, telegram_chat_id, created_at
+       FROM users
+      WHERE ($1::text IS NULL OR approval_status = $1)
+      ORDER BY CASE approval_status WHEN 'pending' THEN 0 ELSE 1 END, created_at DESC`,
+    [status]
+  );
+  return res.json({ users: rows.map(toPublicUser) });
+});
+
+const updateUser = asyncHandler(async (req, res) => {
+  const userId = Number.parseInt(req.params.id, 10);
+  if (!Number.isInteger(userId) || userId < 1) throw new HttpError(400, 'ID de usuario inválido');
+  const username = typeof req.body?.username === 'string' ? req.body.username.trim() : undefined;
+  const role = req.body?.role;
+  const isActive = req.body?.is_active;
+  if (username !== undefined && !USERNAME_RE.test(username)) throw new HttpError(400, 'Nombre de usuario inválido');
+  if (role !== undefined && !['admin', 'user'].includes(role)) throw new HttpError(400, 'Rol inválido');
+  if (isActive !== undefined && typeof isActive !== 'boolean') throw new HttpError(400, 'is_active debe ser booleano');
+  if (userId === req.user.id && (role === 'user' || isActive === false)) {
+    throw new HttpError(400, 'No puedes quitarte tus propios permisos ni desactivar tu cuenta');
+  }
+  if (role === 'user' || isActive === false) {
+    const { rows: targetRows } = await db.query('SELECT role, is_active FROM users WHERE id = $1', [userId]);
+    if (targetRows[0]?.role === 'admin' && targetRows[0]?.is_active) {
+      const { rows: admins } = await db.query("SELECT COUNT(*)::int AS total FROM users WHERE role = 'admin' AND is_active = TRUE AND approval_status = 'approved'");
+      if (admins[0].total <= 1) throw new HttpError(409, 'No puedes desactivar o degradar al último administrador activo');
+    }
+  }
+  if (username === undefined && role === undefined && isActive === undefined) throw new HttpError(400, 'No hay cambios para guardar');
+  try {
+    const { rows } = await db.query(
+      `UPDATE users SET
+         username = COALESCE($1, username),
+         role = COALESCE($2, role),
+         is_active = COALESCE($3, is_active),
+         updated_at = NOW()
+       WHERE id = $4
+       RETURNING ${USER_PUBLIC_COLUMNS}`,
+      [username ?? null, role ?? null, isActive ?? null, userId]
+    );
+    if (!rows[0]) throw new HttpError(404, 'Usuario no encontrado');
+    return res.json({ message: 'Usuario actualizado', user: toPublicUser(rows[0]) });
+  } catch (err) {
+    if (err.code === '23505') throw new HttpError(409, 'El nombre de usuario ya está en uso');
+    throw err;
+  }
+});
+
+const resetUserPassword = asyncHandler(async (req, res) => {
+  const userId = Number.parseInt(req.params.id, 10);
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  if (!Number.isInteger(userId) || userId < 1) throw new HttpError(400, 'ID de usuario inválido');
+  if (password.length < 8 || password.length > 72) throw new HttpError(400, 'La contraseña debe tener entre 8 y 72 caracteres');
+  const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+  const { rowCount } = await db.query(
+    'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+    [passwordHash, userId]
+  );
+  if (!rowCount) throw new HttpError(404, 'Usuario no encontrado');
+  return res.json({ message: 'Contraseña actualizada' });
+});
+
+const setUserApproval = asyncHandler(async (req, res) => {
+  const userId = Number.parseInt(req.params.id, 10);
+  const status = req.body?.approval_status;
+  if (!Number.isInteger(userId) || userId < 1) throw new HttpError(400, 'ID de usuario inválido');
+  if (!['approved', 'rejected'].includes(status)) {
+    throw new HttpError(400, 'approval_status debe ser approved o rejected');
+  }
+  if (userId === req.user.id && status !== 'approved') {
+    throw new HttpError(400, 'No puedes rechazar tu propia cuenta administradora');
+  }
+  const { rows } = await db.query(
+    `UPDATE users SET approval_status = $1, is_active = CASE WHEN $1 = 'approved' THEN TRUE ELSE is_active END, updated_at = NOW()
+      WHERE id = $2
+      RETURNING ${USER_PUBLIC_COLUMNS}`,
+    [status, userId]
+  );
+  if (!rows[0]) throw new HttpError(404, 'Usuario no encontrado');
+  return res.json({ message: status === 'approved' ? 'Cuenta aprobada' : 'Solicitud rechazada', user: toPublicUser(rows[0]) });
+});
+
 module.exports = {
   register,
   login,
@@ -303,4 +410,8 @@ module.exports = {
   unlinkTelegram,
   testTelegram,
   telegramStatus,
+  listUsers,
+  setUserApproval,
+  updateUser,
+  resetUserPassword,
 };

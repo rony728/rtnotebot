@@ -153,6 +153,25 @@ class ApiClient {
     return await this.request('/auth/logout', { method: 'POST' });
   }
 
+  async getAdminUsers(status = 'pending') {
+    const query = status ? `?status=${encodeURIComponent(status)}` : '';
+    return await this.request(`/auth/admin/users${query}`, { method: 'GET' });
+  }
+
+  async setUserApproval(userId, approval_status) {
+    return await this.request(`/auth/admin/users/${encodeURIComponent(userId)}/approval`, {
+      method: 'PATCH', body: { approval_status }
+    });
+  }
+
+  async updateAdminUser(userId, changes) {
+    return this.request(`/auth/admin/users/${encodeURIComponent(userId)}`, { method: 'PATCH', body: changes });
+  }
+
+  async resetAdminUserPassword(userId, password) {
+    return this.request(`/auth/admin/users/${encodeURIComponent(userId)}/password`, { method: 'PUT', body: { password } });
+  }
+
   async getProfile({ silentUnauthorized = false } = {}) {
     const data = await this.request('/auth/profile', { method: 'GET', silentUnauthorized });
     if (data.user) this.setCurrentUser(data.user);

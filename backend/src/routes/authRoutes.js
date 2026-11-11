@@ -3,11 +3,11 @@
 const { Router } = require('express');
 const rateLimit = require('express-rate-limit');
 const auth = require('../controllers/authController');
-const { requireAuth, allowBootstrapOrAuth } = require('../middlewares/auth');
+const { requireAuth, optionalAuth, requireAdmin } = require('../middlewares/auth');
 
 const router = Router();
 
-// Limita intentos de login/registro para frenar fuerza bruta
+// Limita intentos de login/registro público para frenar fuerza bruta
 const credentialsLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 20,
@@ -16,11 +16,15 @@ const credentialsLimiter = rateLimit({
   message: { error: 'Demasiados intentos. Inténtalo de nuevo en unos minutos.' },
 });
 
-router.post('/register', credentialsLimiter, allowBootstrapOrAuth, auth.register);
+router.post('/register', credentialsLimiter, optionalAuth, auth.register);
 router.post('/login', credentialsLimiter, auth.login);
 router.post('/logout', auth.logout);
 
 router.get('/profile', requireAuth, auth.profile);
+router.get('/admin/users', requireAuth, requireAdmin, auth.listUsers);
+router.patch('/admin/users/:id', requireAuth, requireAdmin, auth.updateUser);
+router.patch('/admin/users/:id/approval', requireAuth, requireAdmin, auth.setUserApproval);
+router.put('/admin/users/:id/password', requireAuth, requireAdmin, auth.resetUserPassword);
 router.get('/telegram/status', requireAuth, auth.telegramStatus);
 router.put('/telegram', requireAuth, auth.linkTelegram);
 router.delete('/telegram', requireAuth, auth.unlinkTelegram);

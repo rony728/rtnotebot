@@ -71,13 +71,15 @@ class AuthManager {
   async register(username, password, telegram_chat_id = null) {
     try {
       const data = await window.api.register(username, password, telegram_chat_id);
-      this.isAuthenticated = true;
-      this.user = data.user;
-      this.showAppView();
-      if (window.toast) {
-        window.toast.show(`¡Cuenta creada exitosamente! Bienvenido, ${this.user.username}.`, 'success');
+      if (data.user) {
+        this.isAuthenticated = true;
+        this.user = data.user;
+        this.showAppView();
+        if (window.toast) window.toast.show(`Cuenta creada. Bienvenido, ${this.user.username}.`, 'success');
+        window.dispatchEvent(new CustomEvent('rtnote:login_success', { detail: { user: this.user } }));
+      } else if (window.toast) {
+        window.toast.show(data.message || 'Solicitud enviada. Espera la aprobación del administrador.', 'success', 7000);
       }
-      window.dispatchEvent(new CustomEvent('rtnote:login_success', { detail: { user: this.user } }));
       return data;
     } catch (err) {
       if (window.toast) window.toast.show(err.message, 'error');

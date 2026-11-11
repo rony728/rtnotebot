@@ -158,6 +158,40 @@ class RTNoteApp {
       });
     }
 
+    // Registro público: la cuenta queda pendiente de aprobación.
+    const btnShowRegister = document.getElementById('btn-show-register');
+    const btnCancelRegister = document.getElementById('btn-cancel-register');
+    const formPublicRegister = document.getElementById('form-public-register');
+    if (btnShowRegister && formPublicRegister && formLogin) {
+      btnShowRegister.addEventListener('click', () => {
+        formLogin.classList.add('hidden');
+        document.querySelector('.auth-register-prompt')?.classList.add('hidden');
+        formPublicRegister.classList.remove('hidden');
+      });
+      btnCancelRegister?.addEventListener('click', () => {
+        formPublicRegister.classList.add('hidden');
+        formLogin.classList.remove('hidden');
+        document.querySelector('.auth-register-prompt')?.classList.remove('hidden');
+        formPublicRegister.reset();
+      });
+      formPublicRegister.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = formPublicRegister.querySelector('button[type="submit"]');
+        this.setButtonLoading(btn, true);
+        try {
+          await window.auth.register(formPublicRegister.username.value.trim(), formPublicRegister.password.value);
+          formPublicRegister.reset();
+          formPublicRegister.classList.add('hidden');
+          formLogin.classList.remove('hidden');
+          document.querySelector('.auth-register-prompt')?.classList.remove('hidden');
+        } catch (err) {
+          // El módulo de autenticación presenta el error.
+        } finally {
+          this.setButtonLoading(btn, false);
+        }
+      });
+    }
+
     // Submit Crear Nuevo Usuario (en Modal de Configuración)
     const formCreateUser = document.getElementById('form-create-user');
     if (formCreateUser) {
@@ -272,17 +306,92 @@ class RTNoteApp {
       btnOpenSettings.addEventListener('click', () => {
         modalSettings.classList.remove('hidden');
         this.loadTelegramCard();
+        this.loadAdminRequests();
+        this.loadAdminUsers();
       });
     }
     if (btnBannerSettings && modalSettings) {
       btnBannerSettings.addEventListener('click', () => {
         modalSettings.classList.remove('hidden');
         this.loadTelegramCard();
+        this.loadAdminRequests();
+        this.loadAdminUsers();
       });
     }
     if (btnCloseSettings && modalSettings) {
       btnCloseSettings.addEventListener('click', () => modalSettings.classList.add('hidden'));
     }
+
+    const resetPasswordModal = document.getElementById('modal-reset-password');
+    const closeResetPasswordModal = () => {
+      resetPasswordModal?.classList.add('hidden');
+      document.getElementById('form-reset-password')?.reset();
+      this.resetPasswordUserId = null;
+    };
+    document.getElementById('btn-close-reset-password')?.addEventListener('click', closeResetPasswordModal);
+    document.getElementById('btn-cancel-reset-password')?.addEventListener('click', closeResetPasswordModal);
+    document.getElementById('form-reset-password')?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const password = document.getElementById('reset-password-input').value;
+      const confirmation = document.getElementById('reset-password-confirm').value;
+      if (password.length < 8 || password.length > 72) {
+        window.toast.show('La contraseña debe tener entre 8 y 72 caracteres.', 'warning');
+        return;
+      }
+      if (password !== confirmation) {
+        window.toast.show('Las contraseñas no coinciden.', 'warning');
+        document.getElementById('reset-password-confirm').focus();
+        return;
+      }
+      const submit = event.currentTarget.querySelector('button[type="submit"]');
+      submit.disabled = true;
+      try {
+        await window.api.resetAdminUserPassword(this.resetPasswordUserId, password);
+        closeResetPasswordModal();
+        window.toast.show('Contraseña actualizada.', 'success');
+      } catch (err) {
+        window.toast.show(err.message, 'error');
+      } finally {
+        submit.disabled = false;
+      }
+    });
+
+    document.getElementById('btn-refresh-admin-users')?.addEventListener('click', () => this.loadAdminUsers());
+    document.getElementById('admin-users-search')?.addEventListener('input', () => this.filterAdminUsers());
+    document.getElementById('admin-users-list')?.addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-user-action]'); if (!button) return;
+      const id = button.dataset.userId;
+      try {
+        if (button.dataset.userAction === 'toggle') {
+          await window.api.updateAdminUser(id, { is_active: button.dataset.active !== 'true' });
+          window.toast.show('Estado de cuenta actualizado.', 'success'); await this.loadAdminUsers();
+        } else if (button.dataset.userAction === 'password') {
+          this.openResetPasswordModal(id, button.closest('.admin-user-item')?.querySelector('strong')?.textContent || 'usuario');
+        } else if (button.dataset.userAction === 'role') {
+          const role = button.dataset.role === 'admin' ? 'user' : 'admin'; if (!window.confirm(`¿Cambiar el rol a ${role}?`)) return;
+          await window.api.updateAdminUser(id, { role }); await this.loadAdminUsers(); window.toast.show('Rol actualizado.', 'success');
+        }
+      } catch (err) { window.toast.show(err.message, 'error'); }
+    });
+
+    const btnRefreshAdmin = document.getElementById('btn-refresh-admin-requests');
+    btnRefreshAdmin?.addEventListener('click', () => this.loadAdminRequests());
+    const adminRequestsList = document.getElementById('admin-requests-list');
+    adminRequestsList?.addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-approval-action]');
+      if (!button) return;
+      const userId = button.dataset.userId;
+      const approval = button.dataset.approvalAction;
+      button.disabled = true;
+      try {
+        await window.api.setUserApproval(userId, approval);
+        window.toast.show(approval === 'approved' ? 'Solicitud aprobada.' : 'Solicitud rechazada.', 'success');
+        await Promise.all([this.loadAdminRequests(), this.loadAdminUsers()]);
+      } catch (err) {
+        window.toast.show(err.message, 'error');
+        button.disabled = false;
+      }
+    });
 
     // Botón para refrescar recordatorios
     const btnRefresh = document.getElementById('btn-refresh-reminders');
@@ -347,6 +456,60 @@ class RTNoteApp {
     }
   }
 
+  async loadAdminUsers() {
+    const section = document.getElementById('admin-users-section'); const list = document.getElementById('admin-users-list');
+    if (!section || !list) return;
+    if (window.auth?.user?.role !== 'admin') { section.classList.add('hidden'); return; }
+    section.classList.remove('hidden'); list.textContent = 'Cargando usuarios...';
+    try {
+      const data = await window.api.getAdminUsers('');
+      list.innerHTML = data.users.map((u) => `<div class="admin-user-item" data-search="${window.toast.escape(u.username.toLowerCase())}" style="padding:.75rem 0;border-bottom:1px solid var(--border-color)"><div style="display:flex;justify-content:space-between;gap:.75rem;align-items:center;flex-wrap:wrap"><div><strong>${window.toast.escape(u.username)}</strong><div class="settings-desc">${u.role} · ${u.approval_status} · ${u.is_active ? 'Activo' : 'Desactivado'} · ${u.telegram_linked ? 'Telegram vinculado' : 'Sin Telegram'}</div></div><div style="display:flex;gap:.4rem;flex-wrap:wrap"><button class="btn btn-sm btn-secondary" data-user-action="password" data-user-id="${u.id}">Contraseña</button><button class="btn btn-sm btn-secondary" data-user-action="role" data-role="${u.role}" data-user-id="${u.id}">Cambiar rol</button><button class="btn btn-sm btn-ghost" data-user-action="toggle" data-active="${u.is_active}" data-user-id="${u.id}">${u.is_active ? 'Desactivar' : 'Activar'}</button></div></div></div>`).join('') || 'No hay usuarios registrados.';
+    } catch (err) { list.textContent = err.message; }
+  }
+
+  openResetPasswordModal(userId, username) {
+    this.resetPasswordUserId = userId;
+    document.getElementById('reset-password-username').textContent = username;
+    document.getElementById('form-reset-password')?.reset();
+    document.getElementById('modal-reset-password')?.classList.remove('hidden');
+    document.getElementById('reset-password-input')?.focus();
+  }
+
+  filterAdminUsers() {
+    const q = (document.getElementById('admin-users-search')?.value || '').trim().toLowerCase();
+    document.querySelectorAll('#admin-users-list .admin-user-item').forEach((el) => el.classList.toggle('hidden', !el.dataset.search.includes(q)));
+  }
+
+  async loadAdminRequests() {
+    const section = document.getElementById('admin-requests-section');
+    const list = document.getElementById('admin-requests-list');
+    if (!section || !list) return;
+    const user = window.auth?.user;
+    if (user?.role !== 'admin') {
+      section.classList.add('hidden');
+      return;
+    }
+    section.classList.remove('hidden');
+    list.textContent = 'Cargando solicitudes...';
+    try {
+      const data = await window.api.getAdminUsers('pending');
+      if (!data.users.length) {
+        list.textContent = 'No hay solicitudes pendientes.';
+        return;
+      }
+      list.innerHTML = data.users.map((item) => `
+        <div class="admin-request-item" style="display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.75rem 0;border-bottom:1px solid var(--border-color);">
+          <div><strong>${window.toast.escape(item.username)}</strong><div class="settings-desc">Solicitud ${new Date(item.created_at).toLocaleDateString('es-HN')}</div></div>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+            <button type="button" class="btn btn-sm btn-primary" data-approval-action="approved" data-user-id="${item.id}">Aprobar</button>
+            <button type="button" class="btn btn-sm btn-secondary" data-approval-action="rejected" data-user-id="${item.id}">Rechazar</button>
+          </div>
+        </div>`).join('');
+    } catch (err) {
+      list.textContent = err.message;
+    }
+  }
+
   async handleCreateUser(form) {
     const username = form.username.value.trim();
     const password = form.password.value;
@@ -362,7 +525,7 @@ class RTNoteApp {
 
     try {
       const res = await window.api.createUser(username, password, chatId || null);
-      window.toast.show(`¡Usuario "${res.user.username}" creado exitosamente!`, 'success');
+      window.toast.show(`Usuario "${res.user.username}" creado y aprobado.`, 'success');
       form.reset();
     } catch (err) {
       window.toast.show(err.message, 'error');

@@ -843,3 +843,125 @@ textarea.form-control {
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+
+
+/* ============================================================
+   RTNote UI refresh — tema claro
+   ============================================================ */
+:root {
+  color-scheme: light;
+  --bg-main: #f3f6fb;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f8faff;
+  --bg-input: #ffffff;
+  --bg-modal: #ffffff;
+  --border-subtle: #e2e8f0;
+  --border-focus: #315ee8;
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, .06), 0 1px 2px rgba(15, 23, 42, .04);
+  --shadow-md: 0 18px 48px rgba(15, 23, 42, .18);
+  --shadow-glow: 0 0 0 4px rgba(49, 94, 232, .12);
+  --primary: #315ee8;
+  --primary-hover: #244dcc;
+  --primary-light: #edf2ff;
+  --success: #16845b;
+  --success-light: #e8f7ef;
+  --warning: #a96808;
+  --warning-light: #fff6e5;
+  --danger: #c9364f;
+  --danger-light: #fff0f2;
+  --text-main: #172033;
+  --text-muted: #596579;
+  --text-dim: #7d899b;
+  --radius-sm: 9px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+}
+body {
+  background: var(--bg-main);
+  background-image: radial-gradient(circle at 8% 0%, rgba(49,94,232,.055), transparent 30%);
+}
+.app-header {
+  background: rgba(255,255,255,.92);
+  border-bottom-color: #e5eaf2;
+  box-shadow: 0 1px 3px rgba(15,23,42,.035);
+}
+.header-container, .app-main { max-width: 820px; }
+.brand-icon { box-shadow: none; background: #edf2ff; }
+.brand-title {
+  background: none;
+  color: #172033;
+  -webkit-text-fill-color: currentColor;
+}
+.user-badge { background: #f8faff; border-color: var(--border-subtle); color: var(--text-main); }
+.card {
+  background: var(--bg-card);
+  border-color: var(--border-subtle);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.card:hover { border-color: #d6deeb; }
+.tab-group { background: #f1f4f9; border-color: #e4e9f1; }
+.tab-btn.active { background: #315ee8; box-shadow: 0 2px 6px rgba(49,94,232,.2); }
+.form-control { border-color: #d8e0eb; color: var(--text-main); box-shadow: inset 0 1px 2px rgba(15,23,42,.025); }
+.form-control::placeholder { color: #9aa5b5; }
+.form-control:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(49,94,232,.12); }
+.btn-primary { background: var(--primary); box-shadow: 0 2px 5px rgba(49,94,232,.18); }
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); box-shadow: 0 4px 12px rgba(49,94,232,.2); }
+.btn-secondary { background: #f3f6fa; color: #344054; border-color: #dfe5ee; }
+.btn-secondary:hover:not(:disabled) { background: #e9eef6; }
+.btn-ghost { color: #596579; }
+.btn-ghost:hover:not(:disabled) { color: #172033; background: #f0f3f8; }
+.reminder-card { background: #fff; border-color: #e3e8f0; box-shadow: 0 1px 2px rgba(15,23,42,.035); }
+.reminder-card:hover { background: #fbfcff; border-color: #cbd6e6; }
+.reminder-date { color: #315ee8; }
+.reminder-actions { border-top-color: #edf0f5; }
+.status-pending .badge { color: #315ee8; background: #edf2ff; border-color: #dce5ff; }
+.status-sent .badge { color: #16845b; background: #e8f7ef; border-color: #cceedd; }
+.status-failed .badge { color: #c9364f; background: #fff0f2; border-color: #ffd9df; }
+.status-cancelled .badge { color: #697586; background: #f2f4f7; border-color: #e4e7ec; }
+.telegram-card { background: #f5fbff; }
+.telegram-banner { background: #fff8e9; border-color: #f3dfb5; backdrop-filter: none; }
+.telegram-banner-text { color: #80520d; }
+.pill-badge { background: #f5f7fb; border-color: #dfe5ee; color: #596579; }
+.pill-checkbox input[type="checkbox"]:checked + .pill-badge { background: #edf2ff; border-color: #9eb5ff; color: #244dcc; box-shadow: none; }
+.pill-checkbox:hover .pill-badge { background: #eef2f7; border-color: #cbd5e1; }
+.badge-pre-notify { background: #eaf7ff !important; color: #0874a6 !important; border-color: #c9eafa !important; }
+.modal-overlay { background: rgba(22,32,51,.48); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.modal-content { background: #fff; border-color: #e1e7f0; box-shadow: 0 24px 70px rgba(15,23,42,.22); }
+.toast { background: #fff; color: #172033; border-color: #e2e8f0; box-shadow: var(--shadow-md); }
+.toast-close { color: #697586; }
+.spinner { border-color: #e7ebf2; border-top-color: var(--primary); }
+.spinner-small { border-color: rgba(255,255,255,.35); border-top-color: #fff; }
+.code-snippet { background: #eef3f8; color: #245b83; }
+.guide-step-num { background: var(--primary); }
+.bot-badge { color: #0874a6; }
+.settings-divider { background: #e8edf4; }
+.settings-section { padding: .75rem 0; }
+.admin-user-item, .admin-request-item { border-bottom: 1px solid #e8edf4 !important; }
+.admin-user-item { padding: .9rem 0 !important; }
+.admin-user-item strong, .admin-request-item strong { color: #172033; }
+.modal-content-lg { max-width: 620px; }
+
+/* Modal de restablecimiento de contraseña */
+#modal-reset-password .modal-content { max-width: 430px; }
+#modal-reset-password .settings-desc { margin-top: -.35rem; }
+@media (min-width: 760px) {
+  .app-main { padding-top: 1.75rem; }
+  #dashboard-section { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 1.25rem; align-items: start; }
+  #dashboard-section > article { margin-bottom: 0; }
+  #telegram-warning-banner { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+  .app-main { padding: 1rem .75rem 2rem; }
+  .card { padding: 1rem; }
+  .header-container { gap: .5rem; }
+  .user-badge { padding: .25rem .5rem; }
+  .modal-content { padding: 1.1rem; border-radius: 16px; }
+  .settings-section-header { align-items: flex-start; }
+  .admin-user-item > div { align-items: flex-start !important; }
+  .admin-user-item [data-user-action] { flex: 1 1 auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
