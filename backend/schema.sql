@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS reminders (
     attempts      SMALLINT     NOT NULL DEFAULT 0,
     last_error    TEXT         NULL,
     sent_at       TIMESTAMPTZ  NULL,
+    notify_30m_before BOOLEAN  NOT NULL DEFAULT FALSE,
+    notify_15m_before BOOLEAN  NOT NULL DEFAULT FALSE,
+    sent_30m_at   TIMESTAMPTZ  NULL,
+    sent_15m_at   TIMESTAMPTZ  NULL,
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     CONSTRAINT reminders_status_chk
@@ -58,11 +62,28 @@ CREATE TABLE IF NOT EXISTS reminders (
 -- ------------------------------------------------------------
 ALTER TABLE reminders ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ NULL;
 
+-- ------------------------------------------------------------
+--  Migración v1.1: Pre-Avisos (30m y 15m antes)
+-- ------------------------------------------------------------
+ALTER TABLE reminders ADD COLUMN IF NOT EXISTS notify_30m_before BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE reminders ADD COLUMN IF NOT EXISTS notify_15m_before BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE reminders ADD COLUMN IF NOT EXISTS sent_30m_at TIMESTAMPTZ NULL;
+ALTER TABLE reminders ADD COLUMN IF NOT EXISTS sent_15m_at TIMESTAMPTZ NULL;
+
 -- Índice parcial: el scheduler solo busca recordatorios pendientes
 -- cuya fecha ya venció -> índice pequeño y muy rápido.
 CREATE INDEX IF NOT EXISTS reminders_pending_scheduled_idx
     ON reminders (scheduled_at)
     WHERE status = 'pending';
+
+-- Índices parciales para optimizar búsquedas de recordatorios pendientes con pre-avisos
+CREATE INDEX IF NOT EXISTS reminders_pending_30m_idx
+    ON reminders (scheduled_at)
+    WHERE status = 'pending' AND notify_30m_before = TRUE AND sent_30m_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS reminders_pending_15m_idx
+    ON reminders (scheduled_at)
+    WHERE status = 'pending' AND notify_15m_before = TRUE AND sent_15m_at IS NULL;
 
 -- Listado de recordatorios por usuario ordenados por fecha
 CREATE INDEX IF NOT EXISTS reminders_user_scheduled_idx

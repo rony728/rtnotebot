@@ -3,32 +3,31 @@
    Cliente HTTP centralizado para interactuar con la API
    ============================================================ */
 
-const DEFAULT_API_BASE = 'https://api-rtnotebot.rtdev.uk';
+const PROD_API_BASE = 'https://api-rtnotebot.rtdev.uk';
+const LOCAL_API_BASE = 'http://localhost:3000';
 
 class ApiClient {
   constructor() {
-    this.storageKey = 'rtnote_api_url';
     this.tokenKey = 'rtnote_token';
     this.userKey = 'rtnote_user';
+    // Limpieza de configuración anterior en desuso
+    try {
+      localStorage.removeItem('rtnote_api_url');
+    } catch {}
   }
 
   /**
-   * Obtiene la URL base configurada (o el valor predeterminado de producción).
+   * Obtiene la URL base internamente: producción por defecto,
+   * con fallback silencioso a http://localhost:3000 si corre en localhost o 127.0.0.1.
    */
   getBaseUrl() {
-    const custom = localStorage.getItem(this.storageKey);
-    return (custom || DEFAULT_API_BASE).replace(/\/+$/, '');
-  }
-
-  /**
-   * Permite cambiar la URL base (ej. para probar contra http://localhost:3000).
-   */
-  setBaseUrl(url) {
-    if (!url || url.trim() === '' || url.trim() === DEFAULT_API_BASE) {
-      localStorage.removeItem(this.storageKey);
-    } else {
-      localStorage.setItem(this.storageKey, url.trim().replace(/\/+$/, ''));
+    if (typeof window !== 'undefined' && window.location) {
+      const hostname = window.location.hostname;
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        return LOCAL_API_BASE;
+      }
     }
+    return PROD_API_BASE;
   }
 
   getToken() {
@@ -139,6 +138,15 @@ class ApiClient {
     return data;
   }
 
+  /**
+   * Crea un usuario desde una sesión autenticada sin alterar la sesión actual.
+   */
+  async createUser(username, password, telegram_chat_id = null) {
+    const body = { username, password };
+    if (telegram_chat_id) body.telegram_chat_id = telegram_chat_id;
+    return await this.request('/auth/register', { method: 'POST', body });
+  }
+
   async login(username, password) {
     const data = await this.request('/auth/login', {
       method: 'POST',
@@ -198,18 +206,20 @@ class ApiClient {
     return await this.request(`/reminders/${id}`, { method: 'GET' });
   }
 
-  async createReminder({ title, description, scheduled_at }) {
+  async createReminder({ title, description, scheduled_at, notify_30m_before = false, notify_15m_before = false }) {
     return await this.request('/reminders', {
       method: 'POST',
-      body: { title, description, scheduled_at }
+      body: { title, description, scheduled_at, notify_30m_before, notify_15m_before }
     });
   }
 
-  async updateReminder(id, { title, description, scheduled_at }) {
+  async updateReminder(id, { title, description, scheduled_at, notify_30m_before, notify_15m_before }) {
     const body = {};
     if (title !== undefined) body.title = title;
     if (description !== undefined) body.description = description;
     if (scheduled_at !== undefined) body.scheduled_at = scheduled_at;
+    if (notify_30m_before !== undefined) body.notify_30m_before = notify_30m_before;
+    if (notify_15m_before !== undefined) body.notify_15m_before = notify_15m_before;
 
     return await this.request(`/reminders/${id}`, {
       method: 'PUT',

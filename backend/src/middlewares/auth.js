@@ -2,6 +2,7 @@
 
 const jwt = require('jsonwebtoken');
 const env = require('../config/env');
+const db = require('../config/db');
 const { HttpError } = require('../utils/http');
 
 /**
@@ -44,4 +45,21 @@ const requireAuth = (req, _res, next) => {
   }
 };
 
-module.exports = { signToken, requireAuth };
+/**
+ * Middleware para registro:
+ * Si la tabla users tiene 0 usuarios, permite bootstrap inicial sin token.
+ * Si ya existe al menos 1 usuario, exige obligatoriamente un JWT válido de sesión activa (401 si no está autenticado).
+ */
+const allowBootstrapOrAuth = async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT 1 FROM users LIMIT 1');
+    if (!rows.length) {
+      return next();
+    }
+    return requireAuth(req, res, next);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+module.exports = { signToken, requireAuth, allowBootstrapOrAuth };

@@ -125,6 +125,27 @@ const buildReminderMessage = (reminder, now = new Date()) => {
   return lines.join('\n');
 };
 
+const buildPreReminderMessage = (reminder, minutes) => {
+  const scheduledAt = new Date(reminder.scheduled_at);
+  const lines = [
+    `⏳ <b>Faltan ${minutes} minutos para el evento: ${escapeHtml(reminder.title)}</b>`,
+    '',
+    `📅 ${formatDisplay(scheduledAt)} <i>(${escapeHtml(TZ_LABEL)})</i>`,
+  ];
+
+  if (reminder.description && reminder.description.trim()) {
+    let desc = reminder.description.trim();
+    if (desc.length > MAX_DESCRIPTION_CHARS) desc = `${desc.slice(0, MAX_DESCRIPTION_CHARS)}…`;
+    lines.push(`📝 ${escapeHtml(desc)}`);
+  }
+
+  lines.push('', '— <i>RTNote</i>');
+  return lines.join('\n');
+};
+
+const buildPreReminder30Message = (reminder) => buildPreReminderMessage(reminder, 30);
+const buildPreReminder15Message = (reminder) => buildPreReminderMessage(reminder, 15);
+
 const buildTestMessage = (username, now = new Date()) =>
   [
     '✅ <b>¡Conexión exitosa con RTNote!</b>',
@@ -143,5 +164,8 @@ module.exports = {
   getMe,
   escapeHtml,
   buildReminderMessage,
+  buildPreReminderMessage,
+  buildPreReminder30Message,
+  buildPreReminder15Message,
   buildTestMessage,
 };

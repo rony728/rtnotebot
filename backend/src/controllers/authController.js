@@ -71,6 +71,11 @@ const toPublicUser = (row) => ({
  * Body: { username, password, telegram_chat_id? }
  */
 const register = asyncHandler(async (req, res) => {
+  const { rows: countRows } = await db.query('SELECT 1 FROM users LIMIT 1');
+  if (countRows.length > 0 && !req.user) {
+    throw new HttpError(401, 'Token de autenticación requerido');
+  }
+
   const { username, password, errors } = validateCredentials(req.body || {});
   if (errors.length) throw new HttpError(400, 'Datos inválidos', errors);
 

@@ -10,9 +10,18 @@ process.env.APP_TIMEZONE = 'America/Tegucigalpa';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const jwt = require('jsonwebtoken');
 const { parseDateInput, formatDisplay, toLocalISO, getOffsetMinutes } = require('../src/utils/time');
-const { buildReminderMessage, escapeHtml } = require('../src/services/telegramService');
+const {
+  buildReminderMessage,
+  buildPreReminderMessage,
+  buildPreReminder30Message,
+  buildPreReminder15Message,
+  escapeHtml,
+} = require('../src/services/telegramService');
 const { backoffSeconds } = require('../src/services/scheduler');
+const { signToken, requireAuth, allowBootstrapOrAuth } = require('../src/middlewares/auth');
+const db = require('../src/config/db');
 
 test('Honduras es UTC-6 todo el año (sin horario de verano)', () => {
   assert.equal(getOffsetMinutes(new Date('2026-01-15T12:00:00Z')), -360);
@@ -87,4 +96,117 @@ test('backoff exponencial con tope y retry_after', () => {
   assert.equal(backoffSeconds(3), 240);
   assert.equal(backoffSeconds(20), 3600);
   assert.equal(backoffSeconds(1, 15), 16);
+});
+
+test('mensaje de Telegram pre-aviso 30 min: encabezado, hora de Honduras y HTML escapado', () => {
+  const msg = buildPreReminder30Message({
+    title: 'Reunión con <cliente> & equipo',
+    description: 'Sala de juntas <b>piso 2</b>',
+    scheduled_at: new Date('2026-10-13T14:30:00Z'), // 08:30 AM en Honduras
+  });
+  assert.match(msg, /⏳ <b>Faltan 30 minutos para el evento: Reunión con &lt;cliente&gt; &amp; equipo<\/b>/);
+  assert.match(msg, /📅 13\/10\/2026 08:30 AM <i>\(hora de Honduras\)<\/i>/);
+  assert.match(msg, /📝 Sala de juntas &lt;b&gt;piso 2&lt;\/b&gt;/);
+  assert.match(msg, /— <i>RTNote<\/i>/);
+  assert.doesNotMatch(msg, /retraso/);
+});
+
+test('mensaje de Telegram pre-aviso 15 min: encabezado, hora de Honduras y HTML escapado', () => {
+  const msg = buildPreReminder15Message({
+    title: 'Webinar de "DevOps" & Cloud',
+    scheduled_at: new Date('2026-10-13T15:00:00Z'), // 09:00 AM en Honduras
+  });
+  assert.match(msg, /⏳ <b>Faltan 15 minutos para el evento: Webinar de &quot;DevOps&quot; &amp; Cloud<\/b>/);
+  assert.match(msg, /📅 13\/10\/2026 09:00 AM <i>\(hora de Honduras\)<\/i>/);
+  assert.doesNotMatch(msg, /📝/);
+  assert.match(msg, /— <i>RTNote<\/i>/);
+  assert.doesNotMatch(msg, /retraso/);
+});
+
+test('requireAuth: rechaza con 401 si falta token o esquema no es Bearer', () => {
+  let calledErr = null;
+  requireAuth({ headers: {} }, {}, (err) => {
+    calledErr = err;
+  });
+  assert.equal(calledErr?.status, 401);
+  assert.match(calledErr?.message, /Token de autenticación requerido/);
+
+  calledErr = null;
+  requireAuth({ headers: { authorization: 'Basic 12345' } }, {}, (err) => {
+    calledErr = err;
+  });
+  assert.equal(calledErr?.status, 401);
+});
+
+test('requireAuth: valida token firmado por signToken correctamente', () => {
+  const token = signToken({ id: 42, username: 'tester' });
+  const req = { headers: { authorization: `Bearer ${token}` } };
+  let nextCalled = false;
+  requireAuth(req, {}, (err) => {
+    assert.ifError(err);
+    nextCalled = true;
+  });
+  assert.equal(nextCalled, true);
+  assert.deepEqual(req.user, { id: 42, username: 'tester' });
+});
+
+test('allowBootstrapOrAuth: permite bootstrap si hay 0 usuarios', async () => {
+  const origQuery = db.query;
+  db.query = async (sql) => {
+    if (sql.includes('FROM users')) return { rows: [] };
+    return origQuery(sql);
+  };
+
+  try {
+    const req = { headers: {} };
+    let nextCalled = false;
+    await allowBootstrapOrAuth(req, {}, (err) => {
+      assert.ifError(err);
+      nextCalled = true;
+    });
+    assert.equal(nextCalled, true);
+  } finally {
+    db.query = origQuery;
+  }
+});
+
+test('allowBootstrapOrAuth: exige JWT y rechaza 401 si ya existe al menos 1 usuario y no está autenticado', async () => {
+  const origQuery = db.query;
+  db.query = async (sql) => {
+    if (sql.includes('FROM users')) return { rows: [{ '1': 1 }] };
+    return origQuery(sql);
+  };
+
+  try {
+    const req = { headers: {} };
+    let calledErr = null;
+    await allowBootstrapOrAuth(req, {}, (err) => {
+      calledErr = err;
+    });
+    assert.equal(calledErr?.status, 401);
+  } finally {
+    db.query = origQuery;
+  }
+});
+
+test('allowBootstrapOrAuth: permite registro autenticado si ya existen usuarios', async () => {
+  const origQuery = db.query;
+  db.query = async (sql) => {
+    if (sql.includes('FROM users')) return { rows: [{ '1': 1 }] };
+    return origQuery(sql);
+  };
+
+  try {
+    const token = signToken({ id: 1, username: 'admin' });
+    const req = { headers: { authorization: `Bearer ${token}` } };
+    let nextCalled = false;
+    await allowBootstrapOrAuth(req, {}, (err) => {
+      assert.ifError(err);
+      nextCalled = true;
+    });
+    assert.equal(nextCalled, true);
+    assert.deepEqual(req.user, { id: 1, username: 'admin' });
+  } finally {
+    db.query = origQuery;
+  }
 });

@@ -42,8 +42,8 @@
           </button>
         </div>
 
-        <!-- Botón de Configuración API -->
-        <button id="btn-open-settings" class="btn btn-ghost btn-sm" title="Configurar conexión API">
+        <!-- Botón de Configuración Unificada -->
+        <button id="btn-open-settings" class="btn btn-ghost btn-sm hidden" title="Configuración">
           ⚙️
         </button>
       </div>
@@ -63,16 +63,13 @@
     </aside>
 
     <!-- ========================================================
-         VISTA 1: AUTENTICACIÓN (LOGIN & REGISTRO)
+         VISTA 1: AUTENTICACIÓN (LOGIN)
          ======================================================== -->
-    <section id="auth-section" class="card" aria-label="Autenticación">
-      <div class="tab-group" role="tablist">
-        <button id="tab-auth-login" class="tab-btn active" role="tab" aria-selected="true">
-          Iniciar Sesión
-        </button>
-        <button id="tab-auth-register" class="tab-btn" role="tab" aria-selected="false">
-          Crear Cuenta
-        </button>
+    <section id="auth-section" class="card" aria-label="Iniciar Sesión">
+      <div class="card-header" style="margin-bottom: 1.25rem;">
+        <h2 class="card-title">
+          <span>🔐 Iniciar Sesión</span>
+        </h2>
       </div>
 
       <!-- Formulario de Login -->
@@ -107,53 +104,6 @@
           Ingresar a RT Note
         </button>
       </form>
-
-      <!-- Formulario de Registro -->
-      <form id="form-register" class="hidden" novalidate>
-        <div class="form-group">
-          <label class="form-label" for="reg-username">Nombre de Usuario</label>
-          <input 
-            type="text" 
-            id="reg-username" 
-            name="username" 
-            class="form-control" 
-            placeholder="3 a 32 caracteres (letras, núm, _.-)" 
-            autocomplete="username" 
-            required
-          >
-        </div>
-
-        <div class="form-group">
-          <label class="form-label" for="reg-password">Contraseña</label>
-          <input 
-            type="password" 
-            id="reg-password" 
-            name="password" 
-            class="form-control" 
-            placeholder="Mínimo 8 caracteres" 
-            autocomplete="new-password" 
-            required
-          >
-        </div>
-
-        <div class="form-group">
-          <label class="form-label" for="reg-telegram">
-            Telegram Chat ID <small style="color: var(--text-dim);">(Opcional por ahora)</small>
-          </label>
-          <input 
-            type="text" 
-            id="reg-telegram" 
-            name="telegram_chat_id" 
-            class="form-control" 
-            placeholder="ej. 123456789" 
-            autocomplete="off"
-          >
-        </div>
-
-        <button type="submit" class="btn btn-primary btn-block">
-          Crear mi Cuenta
-        </button>
-      </form>
     </section>
 
     <!-- ========================================================
@@ -161,58 +111,18 @@
          ======================================================== -->
     <section id="dashboard-section" class="hidden">
 
-      <!-- 1. Tarjeta de Estado de Telegram -->
-      <article class="card telegram-card" aria-label="Vinculación de Telegram">
-        <div class="card-header">
-          <h2 class="card-title">
-            <span>✈️ Telegram Bot</span>
-            <span id="telegram-bot-user-display" style="font-size: 0.82rem; color: #38bdf8;">@rtnotebot</span>
-          </h2>
-          <button id="btn-open-tg-guide" class="btn btn-ghost btn-sm" title="¿Cómo obtener mi Chat ID?">
-            ❓ Guía
-          </button>
+      <!-- Banner Discreto si Telegram no está vinculado -->
+      <aside id="telegram-warning-banner" class="telegram-banner hidden" role="alert">
+        <div class="telegram-banner-text">
+          <span>⚠️</span>
+          <span>No has vinculado tu cuenta con <strong>@rtnotebot</strong>. No recibirás avisos.</span>
         </div>
+        <button id="btn-banner-open-settings" type="button" class="btn btn-sm btn-secondary">
+          ⚙️ Configuración
+        </button>
+      </aside>
 
-        <!-- Caso A: Usuario ya tiene Chat ID vinculado -->
-        <div id="telegram-linked-info" class="hidden">
-          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
-            <div>
-              <span class="telegram-status-pill status-linked">
-                <span>🟢</span> Vinculado: <code id="telegram-chat-id-display" class="code-snippet">000000</code>
-              </span>
-            </div>
-            <div class="telegram-actions">
-              <button id="btn-test-telegram" class="btn btn-sm btn-secondary">
-                🔔 Probar conexión
-              </button>
-              <button id="btn-unlink-telegram" class="btn btn-sm btn-ghost" title="Desvincular">
-                Desvincular
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Caso B: Usuario NO tiene Chat ID vinculado -->
-        <form id="form-link-telegram" class="hidden" style="margin-top: 0.5rem;">
-          <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 0.6rem;">
-            Vincula tu cuenta para que <strong style="color: #38bdf8;">@rtnotebot</strong> te envíe notificaciones en tiempo real.
-          </p>
-          <div style="display: flex; gap: 0.5rem;">
-            <input 
-              type="text" 
-              name="telegram_chat_id" 
-              class="form-control" 
-              placeholder="Escribe tu Chat ID de Telegram..." 
-              required
-            >
-            <button type="submit" class="btn btn-sm btn-primary" style="white-space: nowrap;">
-              Vincular
-            </button>
-          </div>
-        </form>
-      </article>
-
-      <!-- 2. Formulario para Crear Recordatorio -->
+      <!-- Formulario para Crear Recordatorio -->
       <article class="card" aria-label="Crear Recordatorio">
         <div class="card-header">
           <h2 class="card-title">
@@ -245,6 +155,21 @@
               class="form-control" 
               required
             >
+          </div>
+
+          <!-- Controles de Pre-Aviso (30m y 15m) -->
+          <div class="form-group">
+            <label class="form-label">Pre-Avisos automáticos</label>
+            <div class="pills-group">
+              <label class="pill-checkbox">
+                <input type="checkbox" id="create-notify-30m" name="notify_30m_before">
+                <span class="pill-badge">⏱️ Avisar 30 min antes</span>
+              </label>
+              <label class="pill-checkbox">
+                <input type="checkbox" id="create-notify-15m" name="notify_15m_before">
+                <span class="pill-badge">⏱️ Avisar 15 min antes</span>
+              </label>
+            </div>
           </div>
 
           <div class="form-group">
@@ -360,6 +285,22 @@
           <label class="form-label" for="edit-datetime-input">Fecha y Hora * <small style="color: #38bdf8;">(Honduras UTC-6)</small></label>
           <input type="datetime-local" id="edit-datetime-input" name="edit_scheduled_at" class="form-control" required>
         </div>
+
+        <!-- Controles de Pre-Aviso (30m y 15m) en Edición -->
+        <div class="form-group">
+          <label class="form-label">Pre-Avisos automáticos</label>
+          <div class="pills-group">
+            <label class="pill-checkbox">
+              <input type="checkbox" id="edit-notify-30m" name="edit_notify_30m_before">
+              <span class="pill-badge">⏱️ Avisar 30 min antes</span>
+            </label>
+            <label class="pill-checkbox">
+              <input type="checkbox" id="edit-notify-15m" name="edit_notify_15m_before">
+              <span class="pill-badge">⏱️ Avisar 15 min antes</span>
+            </label>
+          </div>
+        </div>
+
         <div class="form-group">
           <label class="form-label" for="edit-desc-input">Detalles / Notas</label>
           <textarea id="edit-desc-input" name="edit_description" class="form-control" maxlength="2000"></textarea>
@@ -393,32 +334,125 @@
     </div>
   </div>
 
-  <!-- Modal: Configuración de Conexión API -->
+  <!-- Modal: Configuración Unificada (Telegram & Gestión de Usuarios) -->
   <div id="modal-settings" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="set-title">
-    <div class="modal-content">
+    <div class="modal-content modal-content-lg">
       <div class="modal-header">
-        <h3 id="set-title" class="modal-title">⚙️ Conexión API</h3>
+        <h3 id="set-title" class="modal-title">⚙️ Configuración</h3>
         <button id="btn-close-settings" class="modal-close" aria-label="Cerrar">&times;</button>
       </div>
-      <form id="form-settings">
-        <div class="form-group">
-          <label class="form-label" for="settings-api-url">URL Base del API</label>
-          <input 
-            type="url" 
-            id="settings-api-url" 
-            class="form-control" 
-            placeholder="https://api-rtnotebot.rtdev.uk"
-            required
-          >
-          <small style="color: var(--text-dim); display: block; margin-top: 0.35rem;">
-            Por defecto apunta a <code>https://api-rtnotebot.rtdev.uk</code>. Si estás en pruebas locales, usa <code>http://localhost:3000</code>.
-          </small>
+
+      <!-- SECCIÓN 1: TELEGRAM BOT -->
+      <section class="settings-section">
+        <div class="settings-section-header">
+          <h4 class="settings-section-title">
+            <span>✈️ Telegram Bot</span>
+            <span id="telegram-bot-user-display" class="bot-badge">@rtnotebot</span>
+          </h4>
+          <button id="btn-open-tg-guide" type="button" class="btn btn-ghost btn-sm" title="¿Cómo obtener mi Chat ID?">
+            ❓ Guía
+          </button>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal-settings').classList.add('hidden')">Cerrar</button>
-          <button type="submit" class="btn btn-primary">Guardar</button>
+
+        <!-- Caso A: Vinculado -->
+        <div id="telegram-linked-info" class="hidden">
+          <div class="telegram-linked-row">
+            <span class="telegram-status-pill status-linked">
+              <span>🟢</span> Vinculado: <code id="telegram-chat-id-display" class="code-snippet">000000</code>
+            </span>
+            <div class="telegram-actions">
+              <button id="btn-test-telegram" type="button" class="btn btn-sm btn-secondary">
+                🔔 Probar conexión
+              </button>
+              <button id="btn-unlink-telegram" type="button" class="btn btn-sm btn-ghost" title="Desvincular">
+                Desvincular
+              </button>
+            </div>
+          </div>
         </div>
-      </form>
+
+        <!-- Caso B: No vinculado -->
+        <form id="form-link-telegram" class="hidden" style="margin-top: 0.5rem;">
+          <p class="settings-desc">
+            Vincula tu cuenta para que <strong style="color: #38bdf8;">@rtnotebot</strong> te envíe notificaciones en tiempo real.
+          </p>
+          <div style="display: flex; gap: 0.5rem;">
+            <input 
+              type="text" 
+              name="telegram_chat_id" 
+              class="form-control" 
+              placeholder="Escribe tu Chat ID..." 
+              required
+            >
+            <button type="submit" class="btn btn-sm btn-primary" style="white-space: nowrap;">
+              Vincular
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <hr class="settings-divider">
+
+      <!-- SECCIÓN 2: CREAR NUEVO USUARIO -->
+      <section class="settings-section">
+        <div class="settings-section-header">
+          <h4 class="settings-section-title">
+            <span>👤 Crear Nuevo Usuario</span>
+          </h4>
+        </div>
+        <p class="settings-desc">
+          Registra una nueva cuenta en el sistema utilizando tu sesión activa autorizada.
+        </p>
+
+        <form id="form-create-user" novalidate>
+          <div class="form-group">
+            <label class="form-label" for="newuser-username">Nombre de Usuario *</label>
+            <input 
+              type="text" 
+              id="newuser-username" 
+              name="username" 
+              class="form-control" 
+              placeholder="3 a 32 caracteres (letras, núm, _.-)" 
+              required
+            >
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="newuser-password">Contraseña *</label>
+            <input 
+              type="password" 
+              id="newuser-password" 
+              name="password" 
+              class="form-control" 
+              placeholder="Mínimo 8 caracteres" 
+              required
+            >
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="newuser-telegram">
+              Telegram Chat ID <small style="color: var(--text-dim);">(Opcional)</small>
+            </label>
+            <input 
+              type="text" 
+              id="newuser-telegram" 
+              name="telegram_chat_id" 
+              class="form-control" 
+              placeholder="ej. 123456789"
+            >
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-block">
+            ➕ Crear Usuario
+          </button>
+        </form>
+      </section>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal-settings').classList.add('hidden')">
+          Cerrar
+        </button>
+      </div>
     </div>
   </div>
 

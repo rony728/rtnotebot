@@ -101,16 +101,19 @@ class AuthManager {
     const authSection = document.getElementById('auth-section');
     const dashboardSection = document.getElementById('dashboard-section');
     const headerUser = document.getElementById('header-user-badge');
+    const btnSettings = document.getElementById('btn-open-settings');
 
     if (authSection) authSection.classList.remove('hidden');
     if (dashboardSection) dashboardSection.classList.add('hidden');
     if (headerUser) headerUser.classList.add('hidden');
+    if (btnSettings) btnSettings.classList.add('hidden');
   }
 
   showAppView() {
     const authSection = document.getElementById('auth-section');
     const dashboardSection = document.getElementById('dashboard-section');
     const headerUser = document.getElementById('header-user-badge');
+    const btnSettings = document.getElementById('btn-open-settings');
 
     if (authSection) authSection.classList.add('hidden');
     if (dashboardSection) dashboardSection.classList.remove('hidden');
@@ -118,6 +121,7 @@ class AuthManager {
       headerUser.classList.remove('hidden');
       this.updateUserBadge();
     }
+    if (btnSettings) btnSettings.classList.remove('hidden');
   }
 
   updateUserBadge() {

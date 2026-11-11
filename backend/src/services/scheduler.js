@@ -48,9 +48,61 @@ const CLAIM_SQL = `
      AND u.id = r.user_id
   RETURNING r.id, r.title, r.description, r.scheduled_at, r.attempts, u.telegram_chat_id`;
 
+const CLAIM_30M_SQL = `
+  WITH due_30m AS (
+    SELECT r.id
+      FROM reminders r
+     WHERE r.status = 'pending'
+       AND r.notify_30m_before = TRUE
+       AND r.sent_30m_at IS NULL
+       AND r.scheduled_at <= NOW() + INTERVAL '30 minutes'
+       AND r.scheduled_at > NOW()
+       AND (r.locked_until IS NULL OR r.locked_until <= NOW())
+     ORDER BY r.scheduled_at
+     LIMIT $1
+     FOR UPDATE SKIP LOCKED
+  )
+  UPDATE reminders r
+     SET locked_until = NOW() + make_interval(secs => $2)
+    FROM due_30m, users u
+   WHERE r.id = due_30m.id
+     AND u.id = r.user_id
+  RETURNING r.id, r.title, r.description, r.scheduled_at, r.attempts, u.telegram_chat_id`;
+
+const CLAIM_15M_SQL = `
+  WITH due_15m AS (
+    SELECT r.id
+      FROM reminders r
+     WHERE r.status = 'pending'
+       AND r.notify_15m_before = TRUE
+       AND r.sent_15m_at IS NULL
+       AND r.scheduled_at <= NOW() + INTERVAL '15 minutes'
+       AND r.scheduled_at > NOW()
+       AND (r.locked_until IS NULL OR r.locked_until <= NOW())
+     ORDER BY r.scheduled_at
+     LIMIT $1
+     FOR UPDATE SKIP LOCKED
+  )
+  UPDATE reminders r
+     SET locked_until = NOW() + make_interval(secs => $2)
+    FROM due_15m, users u
+   WHERE r.id = due_15m.id
+     AND u.id = r.user_id
+  RETURNING r.id, r.title, r.description, r.scheduled_at, r.attempts, u.telegram_chat_id`;
+
 /** Reclama atómicamente hasta `limit` recordatorios vencidos (lease de leaseSeconds). */
 const claimDue = async (limit = batchSize) => {
   const { rows } = await db.query(CLAIM_SQL, [limit, leaseSeconds]);
+  return rows;
+};
+
+const claim30mDue = async (limit = batchSize) => {
+  const { rows } = await db.query(CLAIM_30M_SQL, [limit, leaseSeconds]);
+  return rows;
+};
+
+const claim15mDue = async (limit = batchSize) => {
+  const { rows } = await db.query(CLAIM_15M_SQL, [limit, leaseSeconds]);
   return rows;
 };
 
@@ -70,6 +122,22 @@ const markSent = (id) =>
     [id]
   );
 
+const mark30mSent = (id) =>
+  db.query(
+    `UPDATE reminders
+        SET sent_30m_at = NOW(), locked_until = NULL, last_error = NULL
+      WHERE id = $1 AND status = 'pending'`,
+    [id]
+  );
+
+const mark15mSent = (id) =>
+  db.query(
+    `UPDATE reminders
+        SET sent_15m_at = NOW(), locked_until = NULL, last_error = NULL
+      WHERE id = $1 AND status = 'pending'`,
+    [id]
+  );
+
 const markFailed = (id, message) =>
   db.query(
     `UPDATE reminders
@@ -78,6 +146,16 @@ const markFailed = (id, message) =>
     [id, truncate(message)]
   );
 
+const markPreReminderFailed = (id, minutes, message) => {
+  const col = minutes === 30 ? 'sent_30m_at' : 'sent_15m_at';
+  return db.query(
+    `UPDATE reminders
+        SET ${col} = NOW(), locked_until = NULL, last_error = $2
+      WHERE id = $1 AND status = 'pending'`,
+    [id, truncate(message)]
+  );
+};
+
 const scheduleRetry = (id, message, delaySeconds) =>
   db.query(
     `UPDATE reminders
@@ -85,6 +163,39 @@ const scheduleRetry = (id, message, delaySeconds) =>
       WHERE id = $1 AND status = 'pending'`,
     [id, truncate(message), delaySeconds]
   );
+
+/** Procesa un pre-aviso de 30m o 15m. */
+const processPreReminder = async (reminder, minutes) => {
+  if (!reminder.telegram_chat_id) {
+    await markPreReminderFailed(reminder.id, minutes, 'El usuario no tiene un chat de Telegram vinculado');
+    return 'failed';
+  }
+
+  try {
+    const text =
+      minutes === 30
+        ? telegram.buildPreReminder30Message(reminder)
+        : telegram.buildPreReminder15Message(reminder);
+    await telegram.sendMessage(reminder.telegram_chat_id, text);
+    if (minutes === 30) await mark30mSent(reminder.id);
+    else await mark15mSent(reminder.id);
+    return 'sent';
+  } catch (err) {
+    const message = err.message || String(err);
+    const retryable = err instanceof telegram.TelegramError ? err.retryable : true;
+
+    if (retryable) {
+      const delay = 30; // Reintento corto antes del evento
+      await scheduleRetry(reminder.id, message, delay);
+      logError(`#${reminder.id} pre-aviso ${minutes}m falló: ${message}. Reintento en ${delay}s`);
+      return 'retry';
+    }
+
+    await markPreReminderFailed(reminder.id, minutes, message);
+    logError(`#${reminder.id} pre-aviso ${minutes}m falló permanentemente: ${message}`);
+    return 'failed';
+  }
+};
 
 /** Procesa un recordatorio ya reclamado. Devuelve 'sent' | 'retry' | 'failed'. */
 const processOne = async (reminder) => {
@@ -135,15 +246,57 @@ const runWithConcurrency = async (items, worker, limit) => {
 };
 
 /**
- * Un "tick" del scheduler: reclama y procesa todos los recordatorios vencidos.
+ * Un "tick" del scheduler: reclama y procesa recordatorios con pre-avisos (30m y 15m)
+ * y recordatorios vencidos (evento principal).
  * Exportado para poder dispararlo manualmente en pruebas.
  */
 const processDueReminders = async () => {
   if (running) return { skipped: true };
   running = true;
-  const stats = { claimed: 0, sent: 0, retry: 0, failed: 0, error: 0 };
+  const stats = {
+    claimed: 0,
+    sent: 0,
+    retry: 0,
+    failed: 0,
+    error: 0,
+    pre30m_sent: 0,
+    pre15m_sent: 0,
+  };
 
   try {
+    // 1. Pre-avisos de 30 minutos
+    for (let batch = 0; batch < MAX_BATCHES_PER_TICK; batch += 1) {
+      const rows = await claim30mDue();
+      if (!rows.length) break;
+
+      const results = await runWithConcurrency(rows, (r) => processPreReminder(r, 30), CONCURRENCY);
+      for (const res of results) {
+        if (res === 'sent') stats.pre30m_sent += 1;
+        else if (res === 'retry') stats.retry += 1;
+        else if (res === 'failed') stats.failed += 1;
+        else stats.error += 1;
+      }
+
+      if (rows.length < batchSize) break;
+    }
+
+    // 2. Pre-avisos de 15 minutos
+    for (let batch = 0; batch < MAX_BATCHES_PER_TICK; batch += 1) {
+      const rows = await claim15mDue();
+      if (!rows.length) break;
+
+      const results = await runWithConcurrency(rows, (r) => processPreReminder(r, 15), CONCURRENCY);
+      for (const res of results) {
+        if (res === 'sent') stats.pre15m_sent += 1;
+        else if (res === 'retry') stats.retry += 1;
+        else if (res === 'failed') stats.failed += 1;
+        else stats.error += 1;
+      }
+
+      if (rows.length < batchSize) break;
+    }
+
+    // 3. Evento principal vencido (scheduled_at <= NOW())
     for (let batch = 0; batch < MAX_BATCHES_PER_TICK; batch += 1) {
       const rows = await claimDue();
       if (!rows.length) break;
@@ -155,9 +308,10 @@ const processDueReminders = async () => {
       if (rows.length < batchSize) break;
     }
 
-    if (stats.claimed) {
+    if (stats.claimed || stats.pre30m_sent || stats.pre15m_sent) {
       log(
-        `Tick: ${stats.claimed} reclamados, ${stats.sent} enviados, ` +
+        `Tick: ${stats.claimed} vencidos, ${stats.sent} enviados, ` +
+          `${stats.pre30m_sent} pre-30m, ${stats.pre15m_sent} pre-15m, ` +
           `${stats.retry} reintentos, ${stats.failed} fallidos`
       );
     }
@@ -199,4 +353,13 @@ const stop = () => {
   }
 };
 
-module.exports = { start, stop, processDueReminders, claimDue, backoffSeconds };
+module.exports = {
+  start,
+  stop,
+  processDueReminders,
+  claimDue,
+  claim30mDue,
+  claim15mDue,
+  processPreReminder,
+  backoffSeconds,
+};

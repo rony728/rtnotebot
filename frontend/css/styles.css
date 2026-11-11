@@ -703,3 +703,143 @@ textarea.form-control {
   color: #38bdf8;
   font-family: monospace;
 }
+
+/* --- Banner Discreto de Telegram --- */
+.telegram-banner {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1.1rem;
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.telegram-banner-text {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+  color: #fef3c7;
+}
+
+@media (max-width: 600px) {
+  .telegram-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* --- Controles de Pre-Avisos (Pills & Checkboxes) --- */
+.pills-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.pill-checkbox {
+  cursor: pointer;
+  user-select: none;
+}
+
+.pill-checkbox input[type="checkbox"] {
+  display: none;
+}
+
+.pill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  font-weight: 500;
+  transition: var(--transition);
+}
+
+.pill-checkbox input[type="checkbox"]:checked + .pill-badge {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: #6366f1;
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
+}
+
+.pill-checkbox:hover .pill-badge {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Badges en tarjetas */
+.badges-wrapper {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.badge-pre-notify {
+  background: rgba(56, 189, 248, 0.15) !important;
+  color: #38bdf8 !important;
+  border: 1px solid rgba(56, 189, 248, 0.3) !important;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: none;
+}
+
+/* Modal de Configuración Unificado */
+.modal-content-lg {
+  max-width: 540px;
+}
+
+.settings-section {
+  padding: 0.5rem 0;
+}
+
+.settings-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.settings-section-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.settings-desc {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 0.85rem;
+}
+
+.settings-divider {
+  border: 0;
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 1.25rem 0;
+}
+
+.bot-badge {
+  font-size: 0.82rem;
+  color: #38bdf8;
+  font-weight: 500;
+}
+
+.telegram-linked-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

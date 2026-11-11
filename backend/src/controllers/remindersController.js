@@ -11,7 +11,8 @@ const MAX_FUTURE_MS = 5 * 365 * 24 * 60 * 60 * 1000; // 5 años
 const MAX_PENDING_PER_USER = 1000;
 
 const COLUMNS = `id, title, description, scheduled_at, status, attempts, last_error,
-                 sent_at, created_at, updated_at`;
+                 sent_at, notify_30m_before, notify_15m_before, sent_30m_at, sent_15m_at,
+                 created_at, updated_at`;
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -30,6 +31,10 @@ const serialize = (r) => ({
   last_error: r.last_error,
   sent_at: r.sent_at ? r.sent_at.toISOString() : null,
   sent_at_display: r.sent_at ? formatDisplay(r.sent_at) : null,
+  notify_30m_before: Boolean(r.notify_30m_before),
+  notify_15m_before: Boolean(r.notify_15m_before),
+  sent_30m_at: r.sent_30m_at ? r.sent_30m_at.toISOString() : null,
+  sent_15m_at: r.sent_15m_at ? r.sent_15m_at.toISOString() : null,
   created_at: r.created_at.toISOString(),
   updated_at: r.updated_at.toISOString(),
 });
@@ -179,7 +184,7 @@ const getOne = asyncHandler(async (req, res) => {
 
 /**
  * POST /api/reminders
- * Body: { title, description?, scheduled_at }
+ * Body: { title, description?, scheduled_at, notify_30m_before?, notify_15m_before? }
  * scheduled_at sin offset ("2026-10-13T08:30") se interpreta como hora de Honduras.
  */
 const create = asyncHandler(async (req, res) => {
@@ -198,18 +203,27 @@ const create = asyncHandler(async (req, res) => {
     throw new HttpError(429, `Límite de ${MAX_PENDING_PER_USER} recordatorios pendientes alcanzado`);
   }
 
+  const notify30m = Boolean(body.notify_30m_before);
+  const notify15m = Boolean(body.notify_15m_before);
+
+  const now = Date.now();
+  const diffMs = scheduledAt.getTime() - now;
+  // Si al guardar faltan menos de 30 o 15 minutos, marcar automáticamente sent_*_at = NOW() para evitar alertas extemporáneas
+  const sent30mAt = notify30m && diffMs < 30 * 60 * 1000 ? new Date() : null;
+  const sent15mAt = notify15m && diffMs < 15 * 60 * 1000 ? new Date() : null;
+
   const { rows } = await db.query(
-    `INSERT INTO reminders (user_id, title, description, scheduled_at)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO reminders (user_id, title, description, scheduled_at, notify_30m_before, notify_15m_before, sent_30m_at, sent_15m_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING ${COLUMNS}`,
-    [req.user.id, title, description, scheduledAt]
+    [req.user.id, title, description, scheduledAt, notify30m, notify15m, sent30mAt, sent15mAt]
   );
   res.status(201).json({ reminder: serialize(rows[0]) });
 });
 
 /**
  * PUT /api/reminders/:id
- * Body (parcial): { title?, description?, scheduled_at? }
+ * Body (parcial): { title?, description?, scheduled_at?, notify_30m_before?, notify_15m_before? }
  * Solo permitido si el recordatorio sigue en estado 'pending'.
  */
 const update = asyncHandler(async (req, res) => {
@@ -224,18 +238,74 @@ const update = asyncHandler(async (req, res) => {
     sets.push(`${column} = $${params.length}`);
   };
 
+  const { rows: existingRows } = await db.query(
+    `SELECT scheduled_at, status, notify_30m_before, notify_15m_before, sent_30m_at, sent_15m_at
+       FROM reminders
+      WHERE id = $1 AND user_id = $2`,
+    [id, req.user.id]
+  );
+  if (!existingRows[0]) {
+    throw new HttpError(404, 'Recordatorio no encontrado');
+  }
+  const current = existingRows[0];
+  if (current.status !== 'pending') {
+    throw new HttpError(409, `Solo se pueden editar recordatorios pendientes (estado actual: ${current.status})`);
+  }
+
+  let newScheduledAt;
   if (body.title !== undefined) add('title', validateTitle(body.title, errors));
   if (body.description !== undefined) {
     add('description', validateDescription(body.description, errors));
   }
   if (body.scheduled_at !== undefined) {
-    add('scheduled_at', validateScheduledAt(body.scheduled_at, errors));
+    newScheduledAt = validateScheduledAt(body.scheduled_at, errors);
+    add('scheduled_at', newScheduledAt);
     // Reprogramar reinicia el ciclo de reintentos
     sets.push('attempts = 0', 'last_error = NULL', 'locked_until = NULL');
   }
 
+  const effectiveScheduledAt = newScheduledAt || new Date(current.scheduled_at);
+  const now = Date.now();
+  const diffMs = effectiveScheduledAt.getTime() - now;
+
+  let effectiveNotify30m = current.notify_30m_before;
+  let effectiveNotify15m = current.notify_15m_before;
+
+  if (body.notify_30m_before !== undefined) {
+    effectiveNotify30m = Boolean(body.notify_30m_before);
+    add('notify_30m_before', effectiveNotify30m);
+  }
+  if (body.notify_15m_before !== undefined) {
+    effectiveNotify15m = Boolean(body.notify_15m_before);
+    add('notify_15m_before', effectiveNotify15m);
+  }
+
+  // Si se reprograma scheduled_at a una fecha futura lejana, resetear sent_*_at = NULL.
+  // Si al guardar faltan menos de 30 o 15 minutos, marcar automáticamente sent_*_at = NOW()
+  if (body.scheduled_at !== undefined) {
+    const sent30mAt = effectiveNotify30m && diffMs < 30 * 60 * 1000 ? new Date() : null;
+    const sent15mAt = effectiveNotify15m && diffMs < 15 * 60 * 1000 ? new Date() : null;
+    add('sent_30m_at', sent30mAt);
+    add('sent_15m_at', sent15mAt);
+  } else {
+    if (body.notify_30m_before !== undefined) {
+      if (effectiveNotify30m) {
+        add('sent_30m_at', diffMs < 30 * 60 * 1000 ? new Date() : null);
+      } else {
+        add('sent_30m_at', null);
+      }
+    }
+    if (body.notify_15m_before !== undefined) {
+      if (effectiveNotify15m) {
+        add('sent_15m_at', diffMs < 15 * 60 * 1000 ? new Date() : null);
+      } else {
+        add('sent_15m_at', null);
+      }
+    }
+  }
+
   if (!sets.length) {
-    throw new HttpError(400, 'Envía al menos uno de: title, description, scheduled_at');
+    throw new HttpError(400, 'Envía al menos uno de: title, description, scheduled_at, notify_30m_before, notify_15m_before');
   }
   if (errors.length) throw new HttpError(400, 'Datos inválidos', errors);
 

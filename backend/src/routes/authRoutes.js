@@ -3,7 +3,7 @@
 const { Router } = require('express');
 const rateLimit = require('express-rate-limit');
 const auth = require('../controllers/authController');
-const { requireAuth } = require('../middlewares/auth');
+const { requireAuth, allowBootstrapOrAuth } = require('../middlewares/auth');
 
 const router = Router();
 
@@ -16,7 +16,7 @@ const credentialsLimiter = rateLimit({
   message: { error: 'Demasiados intentos. Inténtalo de nuevo en unos minutos.' },
 });
 
-router.post('/register', credentialsLimiter, auth.register);
+router.post('/register', credentialsLimiter, allowBootstrapOrAuth, auth.register);
 router.post('/login', credentialsLimiter, auth.login);
 
 router.get('/profile', requireAuth, auth.profile);

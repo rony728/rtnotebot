@@ -137,29 +137,8 @@ class RTNoteApp {
       this.renderReminders();
     });
 
-    // Pestañas de Auth (Login / Registro)
-    const tabLogin = document.getElementById('tab-auth-login');
-    const tabRegister = document.getElementById('tab-auth-register');
-    const formLogin = document.getElementById('form-login');
-    const formRegister = document.getElementById('form-register');
-
-    if (tabLogin && tabRegister) {
-      tabLogin.addEventListener('click', () => {
-        tabLogin.classList.add('active');
-        tabRegister.classList.remove('active');
-        formLogin.classList.remove('hidden');
-        formRegister.classList.add('hidden');
-      });
-
-      tabRegister.addEventListener('click', () => {
-        tabRegister.classList.add('active');
-        tabLogin.classList.remove('active');
-        formRegister.classList.remove('hidden');
-        formLogin.classList.add('hidden');
-      });
-    }
-
     // Submit Login
+    const formLogin = document.getElementById('form-login');
     if (formLogin) {
       formLogin.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -179,24 +158,12 @@ class RTNoteApp {
       });
     }
 
-    // Submit Registro
-    if (formRegister) {
-      formRegister.addEventListener('submit', async (e) => {
+    // Submit Crear Nuevo Usuario (en Modal de Configuración)
+    const formCreateUser = document.getElementById('form-create-user');
+    if (formCreateUser) {
+      formCreateUser.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const username = formRegister.username.value.trim();
-        const password = formRegister.password.value;
-        const chatId = formRegister.telegram_chat_id ? formRegister.telegram_chat_id.value.trim() : null;
-        const btn = formRegister.querySelector('button[type="submit"]');
-        this.setButtonLoading(btn, true);
-
-        try {
-          await window.auth.register(username, password, chatId || null);
-          formRegister.reset();
-        } catch (err) {
-          // Toast manejado por auth.js
-        } finally {
-          this.setButtonLoading(btn, false);
-        }
+        await this.handleCreateUser(formCreateUser);
       });
     }
 
@@ -295,31 +262,26 @@ class RTNoteApp {
       btnCloseDelete.addEventListener('click', () => modalDelete.classList.add('hidden'));
     }
 
-    // Configuración de API URL (Modal Settings)
+    // Configuración Unificada (Modal Settings)
     const btnOpenSettings = document.getElementById('btn-open-settings');
     const modalSettings = document.getElementById('modal-settings');
-    const formSettings = document.getElementById('form-settings');
     const btnCloseSettings = document.getElementById('btn-close-settings');
-    const apiInput = document.getElementById('settings-api-url');
+    const btnBannerSettings = document.getElementById('btn-banner-open-settings');
 
     if (btnOpenSettings && modalSettings) {
       btnOpenSettings.addEventListener('click', () => {
-        if (apiInput) apiInput.value = window.api.getBaseUrl();
         modalSettings.classList.remove('hidden');
+        this.loadTelegramCard();
+      });
+    }
+    if (btnBannerSettings && modalSettings) {
+      btnBannerSettings.addEventListener('click', () => {
+        modalSettings.classList.remove('hidden');
+        this.loadTelegramCard();
       });
     }
     if (btnCloseSettings && modalSettings) {
       btnCloseSettings.addEventListener('click', () => modalSettings.classList.add('hidden'));
-    }
-    if (formSettings) {
-      formSettings.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const newUrl = apiInput.value.trim();
-        window.api.setBaseUrl(newUrl);
-        modalSettings.classList.add('hidden');
-        window.toast.show(`URL de API actualizada: ${window.api.getBaseUrl()}`, 'success');
-        this.loadDashboardData();
-      });
     }
 
     // Botón para refrescar recordatorios
@@ -355,9 +317,9 @@ class RTNoteApp {
     await Promise.all([this.loadTelegramCard(), this.loadReminders()]);
   }
 
-  /* --- 6. Tarjeta y Estado de Telegram --- */
+  /* --- 6. Tarjeta y Estado de Telegram & Usuarios --- */
   async loadTelegramCard() {
-    const statusContainer = document.getElementById('telegram-status-container');
+    const warningBanner = document.getElementById('telegram-warning-banner');
     const formLink = document.getElementById('form-link-telegram');
     const activeInfo = document.getElementById('telegram-linked-info');
     const chatIdBadge = document.getElementById('telegram-chat-id-display');
@@ -371,15 +333,41 @@ class RTNoteApp {
       }
 
       if (status.linked) {
+        if (warningBanner) warningBanner.classList.add('hidden');
         if (formLink) formLink.classList.add('hidden');
         if (activeInfo) activeInfo.classList.remove('hidden');
         if (chatIdBadge) chatIdBadge.textContent = status.telegram_chat_id;
       } else {
+        if (warningBanner) warningBanner.classList.remove('hidden');
         if (formLink) formLink.classList.remove('hidden');
         if (activeInfo) activeInfo.classList.add('hidden');
       }
     } catch (err) {
       console.warn('[Telegram Status Error]', err);
+    }
+  }
+
+  async handleCreateUser(form) {
+    const username = form.username.value.trim();
+    const password = form.password.value;
+    const chatId = form.telegram_chat_id ? form.telegram_chat_id.value.trim() : null;
+
+    if (!username || !password) {
+      window.toast.show('Usuario y contraseña son requeridos.', 'warning');
+      return;
+    }
+
+    const btn = form.querySelector('button[type="submit"]');
+    this.setButtonLoading(btn, true);
+
+    try {
+      const res = await window.api.createUser(username, password, chatId || null);
+      window.toast.show(`¡Usuario "${res.user.username}" creado exitosamente!`, 'success');
+      form.reset();
+    } catch (err) {
+      window.toast.show(err.message, 'error');
+    } finally {
+      this.setButtonLoading(btn, false);
     }
   }
 
@@ -509,10 +497,23 @@ class RTNoteApp {
 
     const isPending = r.status === 'pending';
 
+    let preBadges = '';
+    if (r.notify_30m_before) {
+      const sent = r.sent_30m_at ? ' ✓' : '';
+      preBadges += `<span class="badge badge-pre-notify" title="${r.sent_30m_at ? 'Pre-aviso 30m enviado' : 'Pre-aviso 30m pendiente'}">⏱️ -30m${sent}</span>`;
+    }
+    if (r.notify_15m_before) {
+      const sent = r.sent_15m_at ? ' ✓' : '';
+      preBadges += `<span class="badge badge-pre-notify" title="${r.sent_15m_at ? 'Pre-aviso 15m enviado' : 'Pre-aviso 15m pendiente'}">⏱️ -15m${sent}</span>`;
+    }
+
     return `
       <article class="reminder-card ${statusClass}" data-id="${r.id}">
         <div class="reminder-card-header">
-          <span class="badge ${statusClass}">${statusLabel}</span>
+          <div class="badges-wrapper">
+            <span class="badge ${statusClass}">${statusLabel}</span>
+            ${preBadges}
+          </div>
           <span class="reminder-date">📅 ${r.scheduled_at_display || r.scheduled_at}</span>
         </div>
 
@@ -558,6 +559,8 @@ class RTNoteApp {
     const title = form.title.value.trim();
     const description = form.description.value.trim();
     const scheduled_at = form.scheduled_at.value;
+    const notify_30m_before = form.notify_30m_before ? form.notify_30m_before.checked : false;
+    const notify_15m_before = form.notify_15m_before ? form.notify_15m_before.checked : false;
 
     if (!title || !scheduled_at) {
       window.toast.show('El título y la fecha son obligatorios.', 'warning');
@@ -571,7 +574,9 @@ class RTNoteApp {
       await window.api.createReminder({
         title,
         description: description || null,
-        scheduled_at
+        scheduled_at,
+        notify_30m_before,
+        notify_15m_before,
       });
       window.toast.show('¡Recordatorio programado con éxito!', 'success');
       form.reset();
@@ -597,6 +602,13 @@ class RTNoteApp {
     form.edit_title.value = reminder.title;
     form.edit_description.value = reminder.description || '';
 
+    if (form.edit_notify_30m_before) {
+      form.edit_notify_30m_before.checked = Boolean(reminder.notify_30m_before);
+    }
+    if (form.edit_notify_15m_before) {
+      form.edit_notify_15m_before.checked = Boolean(reminder.notify_15m_before);
+    }
+
     // Convertir a formato datetime-local si está disponible en scheduled_at_local
     if (reminder.scheduled_at_local) {
       // Formato: 2026-10-15T08:30:00-06:00 -> slice(0, 16)
@@ -615,6 +627,8 @@ class RTNoteApp {
     const title = form.edit_title.value.trim();
     const description = form.edit_description.value.trim();
     const scheduled_at = form.edit_scheduled_at.value;
+    const notify_30m_before = form.edit_notify_30m_before ? form.edit_notify_30m_before.checked : false;
+    const notify_15m_before = form.edit_notify_15m_before ? form.edit_notify_15m_before.checked : false;
 
     const btn = form.querySelector('button[type="submit"]');
     this.setButtonLoading(btn, true);
@@ -623,7 +637,9 @@ class RTNoteApp {
       await window.api.updateReminder(id, {
         title,
         description: description || null,
-        scheduled_at
+        scheduled_at,
+        notify_30m_before,
+        notify_15m_before,
       });
       window.toast.show('Recordatorio actualizado.', 'success');
       document.getElementById('modal-edit-reminder').classList.add('hidden');
