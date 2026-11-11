@@ -18,6 +18,7 @@ const credentialsLimiter = rateLimit({
 
 router.post('/register', credentialsLimiter, allowBootstrapOrAuth, auth.register);
 router.post('/login', credentialsLimiter, auth.login);
+router.post('/logout', auth.logout);
 
 router.get('/profile', requireAuth, auth.profile);
 router.get('/telegram/status', requireAuth, auth.telegramStatus);

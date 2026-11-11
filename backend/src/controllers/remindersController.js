@@ -2,6 +2,7 @@
 
 const db = require('../config/db');
 const { HttpError, asyncHandler } = require('../utils/http');
+const { readBoolean } = require('../utils/validation');
 const { TZ, parseDateInput, formatDisplay, toLocalISO } = require('../utils/time');
 
 const STATUSES = ['pending', 'sent', 'cancelled', 'failed'];
@@ -203,8 +204,9 @@ const create = asyncHandler(async (req, res) => {
     throw new HttpError(429, `Límite de ${MAX_PENDING_PER_USER} recordatorios pendientes alcanzado`);
   }
 
-  const notify30m = Boolean(body.notify_30m_before);
-  const notify15m = Boolean(body.notify_15m_before);
+  const notify30m = readBoolean(body.notify_30m_before, 'notify_30m_before', errors);
+  const notify15m = readBoolean(body.notify_15m_before, 'notify_15m_before', errors);
+  if (errors.length) throw new HttpError(400, 'Datos inválidos', errors);
 
   const now = Date.now();
   const diffMs = scheduledAt.getTime() - now;
@@ -272,11 +274,11 @@ const update = asyncHandler(async (req, res) => {
   let effectiveNotify15m = current.notify_15m_before;
 
   if (body.notify_30m_before !== undefined) {
-    effectiveNotify30m = Boolean(body.notify_30m_before);
+    effectiveNotify30m = readBoolean(body.notify_30m_before, 'notify_30m_before', errors);
     add('notify_30m_before', effectiveNotify30m);
   }
   if (body.notify_15m_before !== undefined) {
-    effectiveNotify15m = Boolean(body.notify_15m_before);
+    effectiveNotify15m = readBoolean(body.notify_15m_before, 'notify_15m_before', errors);
     add('notify_15m_before', effectiveNotify15m);
   }
 

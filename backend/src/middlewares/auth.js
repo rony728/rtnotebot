@@ -5,6 +5,43 @@ const env = require('../config/env');
 const db = require('../config/db');
 const { HttpError } = require('../utils/http');
 
+const AUTH_COOKIE = 'rtnote_session';
+
+const getCookieToken = (header = '') => {
+  for (const part of header.split(';')) {
+    const separator = part.indexOf('=');
+    if (separator < 0) continue;
+    if (part.slice(0, separator).trim() !== AUTH_COOKIE) continue;
+    try {
+      return decodeURIComponent(part.slice(separator + 1).trim());
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
+
+const setAuthCookie = (res, token) => {
+  const payload = jwt.decode(token);
+  const maxAge = payload?.exp ? Math.max(0, payload.exp * 1000 - Date.now()) : undefined;
+  res.cookie(AUTH_COOKIE, token, {
+    httpOnly: true,
+    secure: env.isProduction,
+    sameSite: 'lax',
+    path: '/',
+    ...(maxAge ? { maxAge } : {}),
+  });
+};
+
+const clearAuthCookie = (res) => {
+  res.clearCookie(AUTH_COOKIE, {
+    httpOnly: true,
+    secure: env.isProduction,
+    sameSite: 'lax',
+    path: '/',
+  });
+};
+
 /**
  * Genera un JWT firmado para el usuario.
  */
@@ -17,14 +54,16 @@ const signToken = (user) =>
   });
 
 /**
- * Middleware: exige "Authorization: Bearer <token>" válido.
+ * Acepta sesión HttpOnly y mantiene Bearer temporalmente por compatibilidad.
  * Si es correcto, expone req.user = { id, username }.
  */
 const requireAuth = (req, _res, next) => {
+  const cookieToken = getCookieToken(req.headers.cookie);
   const header = req.headers.authorization || '';
-  const [scheme, token] = header.split(' ');
+  const [scheme, bearerToken] = header.split(' ');
+  const token = cookieToken || (scheme === 'Bearer' ? bearerToken : null);
 
-  if (scheme !== 'Bearer' || !token) {
+  if (!token) {
     return next(new HttpError(401, 'Token de autenticación requerido'));
   }
 
@@ -62,4 +101,12 @@ const allowBootstrapOrAuth = async (req, res, next) => {
   }
 };
 
-module.exports = { signToken, requireAuth, allowBootstrapOrAuth };
+module.exports = {
+  AUTH_COOKIE,
+  signToken,
+  getCookieToken,
+  setAuthCookie,
+  clearAuthCookie,
+  requireAuth,
+  allowBootstrapOrAuth,
+};

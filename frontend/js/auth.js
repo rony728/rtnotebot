@@ -20,25 +20,24 @@ class AuthManager {
     this.checkSession();
   }
 
-  checkSession() {
-    const token = window.api.getToken();
-    const storedUser = window.api.getCurrentUser();
+  async checkSession() {
+    // El usuario en localStorage es solo caché visual; nunca acredita autenticación.
+    this.isAuthenticated = false;
+    this.user = null;
+    this.showAuthView();
 
-    if (token && storedUser) {
+    try {
+      const freshUser = await window.api.getProfile({ silentUnauthorized: true });
       this.isAuthenticated = true;
-      this.user = storedUser;
+      this.user = freshUser;
       this.showAppView();
-      // Refrescar perfil en segundo plano para verificar validez
-      window.api.getProfile().then((freshUser) => {
-        this.user = freshUser;
-        this.updateUserBadge();
-      }).catch((err) => {
-        console.warn('[Auth] No se pudo refrescar perfil:', err.message);
-      });
-    } else {
+    } catch (err) {
       this.isAuthenticated = false;
       this.user = null;
       this.showAuthView();
+      if (err.status !== 401) {
+        console.warn('[Auth] No se pudo verificar la sesión:', err.message);
+      }
     }
   }
 
@@ -86,7 +85,16 @@ class AuthManager {
     }
   }
 
-  logout() {
+  async logout() {
+    try {
+      await window.api.logout();
+    } catch (err) {
+      console.error('[Auth] No se pudo cerrar la sesión en el servidor:', err.message);
+      if (window.toast) {
+        window.toast.show('No se pudo cerrar la sesión en el servidor. Comprueba tu conexión e inténtalo de nuevo.', 'error');
+      }
+      return false;
+    }
     window.api.clearSession();
     this.isAuthenticated = false;
     this.user = null;
@@ -95,6 +103,7 @@ class AuthManager {
       window.toast.show('Has cerrado sesión correctamente.', 'info');
     }
     window.dispatchEvent(new CustomEvent('rtnote:logout'));
+    return true;
   }
 
   showAuthView() {

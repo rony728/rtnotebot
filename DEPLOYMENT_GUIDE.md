@@ -1,7 +1,7 @@
 # 📖 Guía Completa de Despliegue en Producción — RTNote
 
 Esta guía detalla paso a paso el despliegue del sistema completo de recordatorios:
-1. **Frontend PWA**: Alojado en **GitHub Pages** con despliegue automatizado por GitHub Actions.
+1. **Frontend PWA**: Alojado en **GitHub Pages** con despliegue automatizado por GitHub Actions en `https://rtnotebot.rtdev.uk`.
 2. **Backend API**: Ejecutándose en **Ubuntu Server** gestionado por **PM2** y conectado a PostgreSQL.
 3. **Exposición Segura**: A través de **Cloudflare Tunnel (`cloudflared`)** bajo el subdominio `https://api-rtnotebot.rtdev.uk`.
 4. **Notificaciones**: Integradas con el bot existente `@rtnotebot` en hora local de Honduras (`America/Tegucigalpa` / UTC-6).
@@ -14,7 +14,7 @@ Esta guía detalla paso a paso el despliegue del sistema completo de recordatori
   [ Dispositivo Móvil / Desktop ]
                 │
                 ├───────► HTTPS: GitHub Pages (PWA Frontend)
-                │         https://<usuario>.github.io/<repo>/
+                │         https://rtnotebot.rtdev.uk
                 │
                 └───────► HTTPS: Cloudflare Edge
                           https://api-rtnotebot.rtdev.uk
@@ -47,7 +47,18 @@ El repositorio cuenta con el flujo de automatización en `.github/workflows/depl
    - **Source**: Selecciona **GitHub Actions** (en lugar de "Deploy from a branch").
 5. Guarda los cambios.
 
-### Paso 1.2: Subir el código a la rama principal (`main`)
+### Paso 1.2: Configurar el dominio personalizado
+
+El repositorio incluye `frontend/CNAME` con `rtnotebot.rtdev.uk`. En Cloudflare DNS crea el registro:
+
+- Tipo: `CNAME`
+- Nombre: `rtnotebot`
+- Destino: `rony728.github.io`
+- Proxy: **DNS only** (nube gris) durante la configuración de GitHub Pages.
+
+Después, en **GitHub → Settings → Pages → Custom domain**, establece `rtnotebot.rtdev.uk` y guarda. Espera la validación DNS y la emisión del certificado; activa **Enforce HTTPS** cuando GitHub lo permita. No cambies el registro existente de `api-rtnotebot.rtdev.uk`.
+
+### Paso 1.3: Subir el código a la rama principal (`main`)
 En tu entorno de desarrollo local (Windows):
 ```powershell
 # Inicializar git si aún no está inicializado
@@ -61,11 +72,11 @@ git remote add origin https://github.com/<tu-usuario>/<tu-repositorio>.git
 git push -u origin main
 ```
 
-### Paso 1.3: Verificar el despliegue del Frontend
+### Paso 1.4: Verificar el despliegue del Frontend
 1. En GitHub, ve a la pestaña **Actions**.
 2. Verás el flujo **"Desplegar Frontend PWA en GitHub Pages"** ejecutándose.
 3. Al finalizar con éxito (marca verde), GitHub mostrará la URL pública de tu aplicación:
-   `https://<tu-usuario>.github.io/<tu-repositorio>/`
+   `https://rtnotebot.rtdev.uk`
 4. Abre la URL en tu navegador móvil (Chrome en Android o Safari en iOS). Notarás la opción para **"Instalar aplicación"**.
 
 ---
@@ -150,10 +161,12 @@ SCHEDULER_CRON=* * * * *
 SCHEDULER_BATCH_SIZE=50
 REMINDER_MAX_ATTEMPTS=5
 
-# CORS: URL de tu GitHub Pages (¡sin barra al final!)
-CORS_ORIGINS=https://<tu-usuario>.github.io
+# CORS: origen exacto del frontend (sin barra final)
+CORS_ORIGINS=https://rtnotebot.rtdev.uk
 ```
 Guarda y sal (`Ctrl + O`, `Enter`, `Ctrl + X`).
+
+La autenticación del navegador usa una cookie `HttpOnly` emitida por la API. No agregues `Domain`: debe ser host-only para `api-rtnotebot.rtdev.uk`. El frontend y la API deben usar HTTPS y el origen del frontend debe coincidir exactamente con `CORS_ORIGINS`.
 
 ### Paso 2.4: Inicializar la Base de Datos PostgreSQL
 Si la base de datos o usuario aún no existen en tu servidor PostgreSQL:
@@ -308,7 +321,7 @@ Sigue esta lista de comprobación para certificar que todo el flujo está operat
   *Debe responder `HTTP/2 200` con `{"status":"ok","db":"up",...}`.*
 
 - [ ] **2. Acceso a la PWA en GitHub Pages:**
-  Abre en tu teléfono o PC: `https://<tu-usuario>.github.io/<tu-repositorio>/`.
+  Abre en tu teléfono o PC: `https://rtnotebot.rtdev.uk`.
   *La aplicación debe cargar instantáneamente en modo oscuro y mostrar el indicador de instalación PWA.*
 
 - [ ] **3. Registro e Inicio de Sesión:**

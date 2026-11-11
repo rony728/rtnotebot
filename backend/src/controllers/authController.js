@@ -2,7 +2,7 @@
 
 const bcrypt = require('bcryptjs');
 const db = require('../config/db');
-const { signToken } = require('../middlewares/auth');
+const { signToken, setAuthCookie, clearAuthCookie } = require('../middlewares/auth');
 const { HttpError, asyncHandler } = require('../utils/http');
 const telegram = require('../services/telegramService');
 
@@ -71,29 +71,47 @@ const toPublicUser = (row) => ({
  * Body: { username, password, telegram_chat_id? }
  */
 const register = asyncHandler(async (req, res) => {
-  const { rows: countRows } = await db.query('SELECT 1 FROM users LIMIT 1');
-  if (countRows.length > 0 && !req.user) {
-    throw new HttpError(401, 'Token de autenticación requerido');
-  }
-
   const { username, password, errors } = validateCredentials(req.body || {});
   if (errors.length) throw new HttpError(400, 'Datos inválidos', errors);
 
   const chatId = parseChatId(req.body.telegram_chat_id) ?? null;
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+  const client = await db.getClient();
 
   try {
-    const { rows } = await db.query(
+    await client.query('BEGIN');
+    // Serializa el bootstrap entre procesos/instancias. La comprobación decisiva
+    // ocurre dentro de la misma transacción protegida por el advisory lock.
+    await client.query('SELECT pg_advisory_xact_lock(7319, 1)');
+
+    const { rows: countRows } = await client.query('SELECT 1 FROM users LIMIT 1');
+    if (countRows.length > 0 && !req.user) {
+      throw new HttpError(401, 'Token de autenticación requerido');
+    }
+
+    const { rows } = await client.query(
       `INSERT INTO users (username, password_hash, telegram_chat_id)
        VALUES ($1, $2, $3)
        RETURNING ${USER_PUBLIC_COLUMNS}`,
       [username, passwordHash, chatId]
     );
+    await client.query('COMMIT');
+
     const user = toPublicUser(rows[0]);
-    return res.status(201).json({ token: signToken(user), user });
+    // Solo el registro inicial anónimo inicia una sesión nueva. Al crear usuarios
+    // desde una sesión existente no se debe reemplazar la cookie del administrador.
+    if (!req.user) setAuthCookie(res, signToken(user));
+    return res.status(201).json({ user });
   } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.error('[auth] No se pudo revertir el registro:', rollbackError.message);
+    }
     if (err.code === '23505') throw new HttpError(409, 'El nombre de usuario ya está en uso');
     throw err;
+  } finally {
+    client.release();
   }
 });
 
@@ -127,7 +145,14 @@ const login = asyncHandler(async (req, res) => {
   }
 
   const user = toPublicUser(row);
-  return res.json({ token: signToken(user), user });
+  setAuthCookie(res, signToken(user));
+  return res.json({ user });
+});
+
+/** POST /api/auth/logout: elimina la cookie de sesión. */
+const logout = asyncHandler(async (_req, res) => {
+  clearAuthCookie(res);
+  return res.json({ message: 'Sesión cerrada correctamente' });
 });
 
 /**
@@ -272,6 +297,7 @@ const telegramStatus = asyncHandler(async (req, res) => {
 module.exports = {
   register,
   login,
+  logout,
   profile,
   linkTelegram,
   unlinkTelegram,

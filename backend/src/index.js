@@ -8,6 +8,7 @@ const db = require('./config/db');
 const apiRoutes = require('./routes');
 const scheduler = require('./services/scheduler');
 const { notFound, errorHandler } = require('./middlewares/errorHandler');
+const { csrfProtection } = require('./middlewares/csrf');
 
 const app = express();
 
@@ -30,7 +31,8 @@ app.use(
       return callback(null, false);
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-RTNote-Request'],
+    credentials: true,
     maxAge: 86400,
   })
 );
@@ -38,7 +40,7 @@ app.use(
 app.use(express.json({ limit: '10kb' }));
 
 app.get('/', (_req, res) => res.json({ name: 'RTNote API', status: 'running' }));
-app.use('/api', apiRoutes);
+app.use('/api', csrfProtection, apiRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

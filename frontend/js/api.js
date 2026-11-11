@@ -4,12 +4,12 @@
    ============================================================ */
 
 const PROD_API_BASE = 'https://api-rtnotebot.rtdev.uk';
-const LOCAL_API_BASE = 'http://localhost:3000';
 
 class ApiClient {
   constructor() {
-    this.tokenKey = 'rtnote_token';
     this.userKey = 'rtnote_user';
+    // Elimina cualquier JWT heredado: la sesión ahora vive en cookie HttpOnly.
+    try { localStorage.removeItem('rtnote_token'); } catch {}
     // Limpieza de configuración anterior en desuso
     try {
       localStorage.removeItem('rtnote_api_url');
@@ -23,23 +23,10 @@ class ApiClient {
   getBaseUrl() {
     if (typeof window !== 'undefined' && window.location) {
       const hostname = window.location.hostname;
-      if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        return LOCAL_API_BASE;
-      }
+      if (hostname === 'localhost') return 'http://localhost:3000';
+      if (hostname === '127.0.0.1') return 'http://127.0.0.1:3000';
     }
     return PROD_API_BASE;
-  }
-
-  getToken() {
-    return localStorage.getItem(this.tokenKey);
-  }
-
-  setToken(token) {
-    if (token) {
-      localStorage.setItem(this.tokenKey, token);
-    } else {
-      localStorage.removeItem(this.tokenKey);
-    }
   }
 
   getCurrentUser() {
@@ -60,7 +47,7 @@ class ApiClient {
   }
 
   clearSession() {
-    localStorage.removeItem(this.tokenKey);
+    localStorage.removeItem('rtnote_token');
     localStorage.removeItem(this.userKey);
   }
 
@@ -69,18 +56,23 @@ class ApiClient {
    */
   async request(endpoint, options = {}) {
     const url = `${this.getBaseUrl()}/api${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
-    const token = this.getToken();
-
+    const silentUnauthorized = options.silentUnauthorized === true;
+    const method = String(options.method || 'GET').toUpperCase();
     const headers = {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {})
     };
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      headers['X-RTNote-Request'] = '1';
+    }
 
     const config = {
       ...options,
+      method,
+      credentials: 'include',
       headers
     };
+    delete config.silentUnauthorized;
 
     if (config.body && typeof config.body === 'object') {
       config.body = JSON.stringify(config.body);
@@ -97,13 +89,17 @@ class ApiClient {
     // Manejo de sesión expirada / 401
     if (response.status === 401) {
       this.clearSession();
-      window.dispatchEvent(new CustomEvent('rtnote:unauthorized', { detail: { endpoint } }));
+      if (!silentUnauthorized) {
+        window.dispatchEvent(new CustomEvent('rtnote:unauthorized', { detail: { endpoint } }));
+      }
       let errorMsg = 'Sesión expirada o no autorizada';
       try {
         const errorJson = await response.json();
         if (errorJson.error) errorMsg = errorJson.error;
       } catch {}
-      throw new Error(errorMsg);
+      const error = new Error(errorMsg);
+      error.status = 401;
+      throw error;
     }
 
     let data;
@@ -131,10 +127,7 @@ class ApiClient {
     const body = { username, password };
     if (telegram_chat_id) body.telegram_chat_id = telegram_chat_id;
     const data = await this.request('/auth/register', { method: 'POST', body });
-    if (data.token) {
-      this.setToken(data.token);
-      this.setCurrentUser(data.user);
-    }
+    if (data.user) this.setCurrentUser(data.user);
     return data;
   }
 
@@ -152,15 +145,16 @@ class ApiClient {
       method: 'POST',
       body: { username, password }
     });
-    if (data.token) {
-      this.setToken(data.token);
-      this.setCurrentUser(data.user);
-    }
+    if (data.user) this.setCurrentUser(data.user);
     return data;
   }
 
-  async getProfile() {
-    const data = await this.request('/auth/profile', { method: 'GET' });
+  async logout() {
+    return await this.request('/auth/logout', { method: 'POST' });
+  }
+
+  async getProfile({ silentUnauthorized = false } = {}) {
+    const data = await this.request('/auth/profile', { method: 'GET', silentUnauthorized });
     if (data.user) this.setCurrentUser(data.user);
     return data.user;
   }
