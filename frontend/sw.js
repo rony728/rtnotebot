@@ -2,7 +2,7 @@
    RTNote Service Worker - PWA Offline & Cache Manager
    ============================================================ */
 
-const CACHE_NAME = 'rtnote-pwa-v1.2.0';
+const CACHE_NAME = 'rtnote-pwa-v1.2.1';
 
 // Recursos estáticos locales para pre-cachear (rutas relativas a la raíz del frontend)
 const PRECACHE_ASSETS = [
@@ -10,9 +10,9 @@ const PRECACHE_ASSETS = [
   './index.html',
   './manifest.json',
   './css/styles.css',
-  './js/api.js',
-  './js/auth.js',
-  './js/app.js',
+  './js/api.js?v=1.2.1',
+  './js/auth.js?v=1.2.1',
+  './js/app.js?v=1.2.1',
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png'
